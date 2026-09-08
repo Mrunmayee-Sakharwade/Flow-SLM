@@ -94,7 +94,6 @@ def resolve_speaker_wav_file(voice_name: str) -> Optional[str]:
         os.path.join(FLOWEDIT_DIR, "model", target_file),
         os.path.join(FLOWEDIT_DIR, "model", "voices", target_file),
         os.path.join(PROJECT_ROOT, "Flowedit", "model", target_file),
-        os.path.join(PROJECT_ROOT, "Flow-SLM", target_file),
         # Flowedit deploy_voices folder
         os.path.join(FLOWEDIT_DIR, "deploy_voices", target_file),
         os.path.join(PROJECT_ROOT, "Flowedit", "deploy_voices", target_file),
@@ -115,7 +114,6 @@ def resolve_speaker_wav_file(voice_name: str) -> Optional[str]:
         f"/home/rsurya/projects/flow_edit/Flowedit/flowedit/resources/{target_file}",
         f"/home/rsurya/projects/flow_edit/Flowedit/{target_file}",
         f"/home/rsurya/projects/flow_edit/{target_file}",
-        f"/home/rsurya/projects/flow_edit/Flow-SLM/{target_file}",
         f"/home/rsurya/projects/text_to_speech/{target_file}",
         f"/home/rsurya/projects/text_to_speech/app/{target_file}",
         f"/home/rsurya/voices/{target_file}",
@@ -229,10 +227,11 @@ class AudioSynthesizer:
         flowedit_url: Optional[str] = None
     ):
         self.default_voice = os.getenv("DEFAULT_TTS_VOICE", default_voice)
-        self.flowedit_url = flowedit_url or os.getenv("FLOWEDIT_URL", "")
+        self.flowedit_url = flowedit_url or os.getenv("FLOWEDIT_URL", "http://127.0.0.1:8000")
         self.flowedit_inference = None
         self._flowedit_ready = False
         self._phonetic_normalizer = None
+        self._last_memory_mtime = 0.0
 
         # Voice mapping with dynamic resolution
         self.preset_voices = {
@@ -252,6 +251,39 @@ class AudioSynthesizer:
 
         # Initialize FlowEdit phonetic normalizer and inference pipeline if available
         self._init_flowedit()
+
+    def _find_memory_file(self) -> Optional[str]:
+        """Find the Hopfield memory corrections.pt file across project locations."""
+        cands = [
+            os.getenv("FLOWEDIT_MEMORY_PATH", ""),
+            "/home/rsurya/projects/flow_edit/corrections.pt",
+            "/home/rsurya/projects/flow_edit/Flowedit/corrections.pt",
+            os.path.join(FLOWEDIT_DIR, "corrections.pt"),
+            os.path.join(PROJECT_ROOT, "corrections.pt"),
+            "./corrections.pt",
+        ]
+        for c in cands:
+            if c and os.path.isfile(c) and os.path.getsize(c) > 50:
+                return os.path.abspath(c)
+        return None
+
+    def _load_hopfield_memory(self):
+        """Load or hot-reload FlowEdit Hopfield associative memory from corrections.pt."""
+        if not self.flowedit_inference or not hasattr(self.flowedit_inference, "memory") or self.flowedit_inference.memory is None:
+            return
+        mem_file = self._find_memory_file()
+        if not mem_file:
+            return
+        try:
+            mtime = os.path.getmtime(mem_file)
+            if self._last_memory_mtime < mtime:
+                self.flowedit_inference.memory.load(mem_file)
+                if hasattr(self.flowedit_inference, "refiner") and self.flowedit_inference.refiner:
+                    self.flowedit_inference.refiner.memory = self.flowedit_inference.memory
+                self._last_memory_mtime = mtime
+                print(f"[AudioSynthesizer] ✓ Connected FlowEdit Hopfield Memory: {self.flowedit_inference.memory.num_entries} corrections loaded from {mem_file}")
+        except Exception as e:
+            logger.debug(f"[AudioSynthesizer] Hopfield memory load notice: {e}")
 
     def _init_flowedit(self):
         """Try loading FlowEdit pipeline components."""
@@ -297,8 +329,9 @@ class AudioSynthesizer:
 
                 self.flowedit_inference = FlowEditInference(config=cfg)
                 self.flowedit_inference.load()
+                self._load_hopfield_memory()
                 self._flowedit_ready = True
-                print("[AudioSynthesizer] FlowEdit pipeline loaded successfully with Hopfield memory.")
+                print(f"[AudioSynthesizer] FlowEdit pipeline loaded successfully with {self.flowedit_inference.memory.num_entries if self.flowedit_inference.memory else 0} Hopfield memory corrections.")
         except Exception as e:
             logger.info(f"[AudioSynthesizer] Local FlowEdit model not preloaded ({e}). Will use neural/HTTPS engine.")
 
@@ -338,6 +371,15 @@ class AudioSynthesizer:
                 normalized = self._phonetic_normalizer(normalized)
             except Exception:
                 pass
+
+        # Apply S3 Phonetic Spelling Store corrections for TTS (e.g. mihir -> myhyr)
+        try:
+            from flowedit.memory.s3_storage import s3_spelling_store
+            normalized, s3_applied = s3_spelling_store.apply_corrections_to_text(normalized)
+            if s3_applied:
+                logger.info(f"[AudioSynthesizer] ✓ S3 spelling correction applied for speech: {s3_applied}")
+        except Exception as e:
+            logger.debug(f"[AudioSynthesizer] S3 normalization notice: {e}")
 
         return normalized
 
@@ -397,6 +439,9 @@ class AudioSynthesizer:
         voice: str = "michael"
     ) -> Tuple[bytes, str]:
         """Synthesize using local FlowEditInference pipeline."""
+        # Hot-reload Hopfield memory if corrections.pt was updated via FlowEdit
+        self._load_hopfield_memory()
+
         speaker_wav = self._get_speaker_wav(voice)
         temp_out = tempfile.mktemp(suffix=".wav")
         try:
@@ -434,7 +479,7 @@ class AudioSynthesizer:
             if speaker_wav and os.path.exists(speaker_wav):
                 files["speaker_wav"] = open(speaker_wav, "rb")
 
-            resp = requests.post(endpoint, data=data, files=files if files else None, timeout=15)
+            resp = requests.post(endpoint, data=data, files=files if files else None, timeout=30)
             if files:
                 files["speaker_wav"].close()
 

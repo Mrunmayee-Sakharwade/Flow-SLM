@@ -227,6 +227,14 @@ class S3SpellingStore:
             "total_entries": len(self._dictionary),
         }
 
+    def _ensure_loaded(self) -> None:
+        """Ensure dictionary is loaded from S3 bucket on demand if empty."""
+        if not self._dictionary and self.bucket_name:
+            try:
+                self.load_from_s3()
+            except Exception as e:
+                logger.debug(f"[S3 Store] On-demand S3 load check notice: {e}")
+
     def resolve_correction(self, text: str, word: str) -> Optional[str]:
         """Deterministically resolve the correct phonetic spelling for word in text context.
         
@@ -240,6 +248,7 @@ class S3SpellingStore:
         Returns:
             The replacement spelling string (e.g. 'red') or None if not registered/incompatible.
         """
+        self._ensure_loaded()
         word_key = word.strip().lower()
         if word_key not in self._dictionary:
             return None
@@ -267,6 +276,7 @@ class S3SpellingStore:
         Returns:
             Tuple of (refined_text, list_of_applied_corrections)
         """
+        self._ensure_loaded()
         if not self._dictionary or not text:
             return text, []
 
@@ -292,6 +302,74 @@ class S3SpellingStore:
                     f"[S3 Store] Applied deterministic phonetic respelling: "
                     f"'{word_dict.get('word', word_key)}' -> '{resolved_spell.strip()}'"
                 )
+
+        return result_text, applied
+
+    def get_vocabulary_prompt(self) -> str:
+        """Return vocabulary prompt string containing canonical words in S3 dictionary for Whisper ASR biasing."""
+        self._ensure_loaded()
+        if not self._dictionary:
+            return ""
+        words = []
+        for k, d in self._dictionary.items():
+            w = d.get("word") or k
+            if w and w not in words:
+                words.append(w)
+        if not words:
+            return ""
+        return "Technical vocabulary: " + ", ".join(words) + "."
+
+    def apply_corrections_to_transcript(self, transcript: str) -> Tuple[str, List[Dict[str, Any]]]:
+        """Scan transcribed speech text and restore canonical words where Whisper transcribed phonetic spelling variants.
+        
+        For example, if 'Rybrevant' is registered with spell_as 'Rye-breh-vant', any occurrence
+        of 'Rye-breh-vant' (or space/hyphen variants) in the transcript is restored to canonical 'Rybrevant'.
+        
+        Args:
+            transcript: Raw or partially corrected transcribed text from Whisper
+            
+        Returns:
+            Tuple of (corrected_transcript, list_of_applied_corrections)
+        """
+        self._ensure_loaded()
+        if not self._dictionary or not transcript:
+            return transcript, []
+
+        applied = []
+        result_text = transcript
+
+        for word_key, word_dict in self._dictionary.items():
+            canonical = word_dict.get("word", word_key)
+            # Find all phonetic spell_as targets across default and individual senses
+            spell_targets = set()
+            if word_dict.get("default_spell"):
+                spell_targets.add(word_dict["default_spell"].strip())
+            for s in word_dict.get("senses", []):
+                if s.get("spell_as"):
+                    spell_targets.add(s["spell_as"].strip())
+
+            for st in spell_targets:
+                if not st or st.lower() == canonical.lower():
+                    continue
+                # Match flexible separators (spaces, hyphens) between words/syllables
+                escaped = re.escape(st).replace(r'\ ', r'[\s-]+').replace(r'\-', r'[\s-]+')
+                pattern = re.compile(r'\b' + escaped + r'\b', re.IGNORECASE)
+                matches = list(pattern.finditer(result_text))
+                if not matches:
+                    continue
+                for m in reversed(matches):
+                    matched_str = m.group(0)
+                    start, end = m.span()
+                    result_text = result_text[:start] + canonical + result_text[end:]
+                    applied.append({
+                        "original": matched_str,
+                        "corrected": canonical,
+                        "match_type": "s3_spelling_phonetic_variant",
+                    })
+                    logger.info(
+                        f"[S3 Store] Restored canonical spelling in transcript: "
+                        f"'{matched_str}' -> '{canonical}'"
+                    )
 
         return result_text, applied
 

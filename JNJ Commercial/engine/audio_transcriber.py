@@ -19,11 +19,12 @@ Usage:
 """
 
 import os
+import sys
 import time
 import math
 import tempfile
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -33,20 +34,33 @@ SUPPORTED_EXTENSIONS = {
     ".aac", ".wma", ".opus", ".mp4", ".mpeg", ".mpga"
 }
 
+# Ensure FlowEdit is discoverable
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+JNJ_COMMERCIAL_DIR = os.path.dirname(CURRENT_DIR)
+PROJECT_ROOT = os.path.dirname(JNJ_COMMERCIAL_DIR)
+FLOWEDIT_DIR = os.path.join(PROJECT_ROOT, "Flowedit")
+
+for p in [FLOWEDIT_DIR, "/home/rsurya/projects/flow_edit/Flowedit", "/home/rsurya/projects/flow_edit"]:
+    if os.path.isdir(p) and p not in sys.path:
+        sys.path.insert(0, p)
+
 
 class AudioTranscriber:
     """
-    Whisper-based Speech-to-Text engine using faster-whisper.
+    Whisper-based Speech-to-Text engine enhanced with FlowEdit Hopfield Memory
+    and S3 Spelling Store corrections.
     
-    Loads a CTranslate2-optimized Whisper model for fast local inference.
-    Automatically handles format conversion for non-WAV audio inputs.
+    Loads a CTranslate2-optimized Whisper model for fast local inference,
+    biases decoding vocabulary using Hopfield associative memory, and
+    post-corrects transcripts using S3 phonetic dictionary and Hopfield memory.
     """
 
     def __init__(
         self,
         model_size: Optional[str] = None,
         compute_type: Optional[str] = None,
-        device: Optional[str] = None
+        device: Optional[str] = None,
+        flowedit_url: Optional[str] = None,
     ):
         """
         Initialize the Whisper transcription engine.
@@ -57,16 +71,96 @@ class AudioTranscriber:
             compute_type: CTranslate2 compute type ('float16', 'int8', 'float32').
                           Defaults to WHISPER_COMPUTE_TYPE env var or auto-detect.
             device: Device to run on ('cuda', 'cpu'). Auto-detected if not specified.
+            flowedit_url: URL to FlowEdit API service (default: FLOWEDIT_URL or http://127.0.0.1:8000)
         """
         self.model_size = model_size or os.getenv("WHISPER_MODEL_SIZE", "base")
         self.default_language = os.getenv("WHISPER_LANGUAGE", "en")
         self.device = device
         self.compute_type = compute_type or os.getenv("WHISPER_COMPUTE_TYPE", "")
+        self.flowedit_url = flowedit_url or os.getenv("FLOWEDIT_URL", "http://127.0.0.1:8000")
         self._model = None
+        self._hopfield_memory = None
+        self._last_memory_mtime = 0.0
+
+        # Load Whisper model
         try:
             self._load_model()
         except ImportError as e:
             print(f"[AudioTranscriber] NOTE: {e}")
+
+        # Connect FlowEdit Hopfield associative memory
+        self._load_hopfield_memory()
+
+    def _transcribe_flowedit_remote(
+        self,
+        audio_path: str,
+        language: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Attempt transcription via FlowEdit REST API (/api/transcribe) if running."""
+        if not self.flowedit_url:
+            return None
+        import requests
+        try:
+            url = f"{self.flowedit_url.rstrip('/')}/api/transcribe"
+            with open(audio_path, "rb") as f:
+                files = {"audio": (os.path.basename(audio_path), f, "audio/wav")}
+                data = {"use_memory": "true", "include_timestamps": "true"}
+                if language:
+                    data["language"] = language
+                resp = requests.post(url, files=files, data=data, timeout=25)
+            if resp.status_code == 200:
+                data = resp.json()
+                print(f"[AudioTranscriber] ✓ Transcribed via FlowEdit service ({self.flowedit_url})")
+                return {
+                    "transcript": data.get("text", ""),
+                    "raw_transcript": data.get("raw_text", data.get("text", "")),
+                    "language": data.get("language", "en"),
+                    "language_probability": 0.99,
+                    "confidence": 0.95,
+                    "duration_seconds": data.get("duration", 0.0),
+                    "transcription_latency_ms": 0.0,
+                    "segments": data.get("segments", []),
+                    "s3_corrections": data.get("s3_corrections", []),
+                    "hopfield_corrections": data.get("corrections", []),
+                    "flowedit_memory_applied": data.get("memory_applied", False),
+                    "hopfield_entries_count": data.get("memory_entries_count", 0)
+                }
+        except Exception as e:
+            logger.debug(f"[AudioTranscriber] FlowEdit remote call notice ({e}). Falling back to local pipeline.")
+        return None
+
+    def _find_memory_file(self) -> Optional[str]:
+        """Find the Hopfield memory corrections.pt file across project locations."""
+        cands = [
+            os.getenv("FLOWEDIT_MEMORY_PATH", ""),
+            "/home/rsurya/projects/flow_edit/corrections.pt",
+            "/home/rsurya/projects/flow_edit/Flowedit/corrections.pt",
+            os.path.join(FLOWEDIT_DIR, "corrections.pt"),
+            os.path.join(PROJECT_ROOT, "corrections.pt"),
+            "./corrections.pt",
+        ]
+        for c in cands:
+            if c and os.path.isfile(c) and os.path.getsize(c) > 50:
+                return os.path.abspath(c)
+        return None
+
+    def _load_hopfield_memory(self):
+        """Load or reload FlowEdit Hopfield associative memory from corrections.pt."""
+        mem_file = self._find_memory_file()
+        if not mem_file:
+            return
+        try:
+            mtime = os.path.getmtime(mem_file)
+            if self._hopfield_memory is None or mtime > self._last_memory_mtime:
+                from flowedit.memory.hopfield_memory import HopfieldMemory
+                from flowedit.config import FlowEditConfig
+                cfg = FlowEditConfig()
+                self._hopfield_memory = HopfieldMemory(cfg.memory)
+                self._hopfield_memory.load(mem_file)
+                self._last_memory_mtime = mtime
+                print(f"[AudioTranscriber] ✓ Connected FlowEdit Hopfield Memory: {self._hopfield_memory.num_entries} corrections loaded from {mem_file}")
+        except Exception as e:
+            logger.debug(f"[AudioTranscriber] Hopfield memory load notice: {e}")
 
     def _load_model(self):
         """Load the faster-whisper model with appropriate device configuration."""
@@ -210,18 +304,57 @@ class AudioTranscriber:
         if target_lang and str(target_lang).lower() in ("auto", "none", ""):
             target_lang = None
 
+        # 1. Attempt FlowEdit REST Service transcription if accessible
+        if self.flowedit_url:
+            remote_res = self._transcribe_flowedit_remote(converted_path, language=target_lang)
+            if remote_res:
+                if is_temp and os.path.exists(converted_path):
+                    try:
+                        os.unlink(converted_path)
+                    except OSError:
+                        pass
+                return remote_res
+
+        # Reload Hopfield memory if updated on disk (hot-reload from FlowEdit API)
+        self._load_hopfield_memory()
+
+        # Extract vocabulary biasing prompt from Hopfield Memory and S3 Spelling Store
+        prompt_parts = []
+        if self._hopfield_memory and self._hopfield_memory.num_entries > 0:
+            hop_prompt = self._hopfield_memory.get_vocabulary_prompt()
+            if hop_prompt:
+                prompt_parts.append(hop_prompt)
+
+        try:
+            from flowedit.memory.s3_storage import s3_spelling_store
+            s3_prompt = s3_spelling_store.get_vocabulary_prompt()
+            if s3_prompt:
+                prompt_parts.append(s3_prompt)
+        except Exception:
+            pass
+
+        initial_prompt = " ".join(prompt_parts).strip() or None
+        if initial_prompt:
+            logger.debug(f"[AudioTranscriber] Biasing Whisper with vocabulary prompt: '{initial_prompt}'")
+
         try:
             t_start = time.perf_counter()
 
-            segments_gen, info = self._model.transcribe(
-                converted_path,
-                language=target_lang,
-                beam_size=beam_size,
-                vad_filter=True,
-                vad_parameters=dict(
+            transcribe_kwargs = {
+                "language": target_lang,
+                "beam_size": beam_size,
+                "vad_filter": True,
+                "vad_parameters": dict(
                     min_silence_duration_ms=500,
                     speech_pad_ms=200
                 )
+            }
+            if initial_prompt:
+                transcribe_kwargs["initial_prompt"] = initial_prompt
+
+            segments_gen, info = self._model.transcribe(
+                converted_path,
+                **transcribe_kwargs
             )
 
             # Collect all segments
@@ -241,18 +374,49 @@ class AudioTranscriber:
                 # Convert log-prob to approximate confidence
                 total_confidence += math.exp(seg.avg_logprob)
 
-            transcript = " ".join(full_text_parts).strip()
+            raw_transcript = " ".join(full_text_parts).strip()
+            transcript = raw_transcript
+            s3_applied = []
+            hopfield_applied = []
+
+            # ─────────────────────────────────────────────────────────────
+            # FlowEdit Autonomous Correction Stage 1: S3 Spelling Store
+            # ─────────────────────────────────────────────────────────────
+            try:
+                from flowedit.memory.s3_storage import s3_spelling_store
+                transcript, s3_applied = s3_spelling_store.apply_corrections_to_transcript(transcript)
+                if s3_applied:
+                    print(f"[AudioTranscriber] ✓ S3 Spelling correction applied: {s3_applied}")
+            except Exception as e:
+                logger.debug(f"[AudioTranscriber] S3 spelling correction notice: {e}")
+
+            # ─────────────────────────────────────────────────────────────
+            # FlowEdit Autonomous Correction Stage 2: Hopfield Memory
+            # ─────────────────────────────────────────────────────────────
+            if self._hopfield_memory and self._hopfield_memory.num_entries > 0:
+                try:
+                    transcript, hopfield_applied = self._hopfield_memory.correct_transcript(transcript)
+                    if hopfield_applied:
+                        print(f"[AudioTranscriber] ✓ Hopfield Memory correction applied: {hopfield_applied}")
+                except Exception as e:
+                    logger.debug(f"[AudioTranscriber] Hopfield transcript correction notice: {e}")
+
             avg_confidence = (total_confidence / len(segments)) if segments else 0.0
             latency_ms = round((time.perf_counter() - t_start) * 1000, 2)
 
             result = {
                 "transcript": transcript,
+                "raw_transcript": raw_transcript,
                 "language": info.language,
                 "language_probability": round(info.language_probability, 4),
                 "confidence": round(min(avg_confidence, 1.0), 4),
                 "duration_seconds": round(info.duration, 2),
                 "transcription_latency_ms": latency_ms,
-                "segments": segments
+                "segments": segments,
+                "s3_corrections": s3_applied,
+                "hopfield_corrections": hopfield_applied,
+                "flowedit_memory_applied": bool(s3_applied or hopfield_applied),
+                "hopfield_entries_count": self._hopfield_memory.num_entries if self._hopfield_memory else 0
             }
 
             logger.info(
@@ -263,7 +427,7 @@ class AudioTranscriber:
                 f"[AudioTranscriber] Transcription complete: "
                 f"{info.duration:.1f}s audio -> {len(transcript)} chars "
                 f"({latency_ms:.0f}ms, lang={info.language}, "
-                f"conf={avg_confidence:.2f})"
+                f"conf={avg_confidence:.2f}, memory_applied={bool(s3_applied or hopfield_applied)})"
             )
 
             return result

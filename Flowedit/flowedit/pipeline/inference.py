@@ -123,8 +123,6 @@ class FlowEditInference:
                     os.path.join(flowedit_root, "deploy_voices", target_filename),
                     os.path.join(pkg_dir, "resources", target_filename),
                     os.path.join(workspace_root, target_filename),
-                    os.path.join(workspace_root, "Flow-SLM", target_filename),
-                    f"/home/rsurya/projects/flow_edit/Flow-SLM/{target_filename}",
                     # Fallback to default_speaker.wav
                     os.path.join(pkg_dir, "resources", "default_speaker.wav"),
                     f"/home/rsurya/projects/flow_edit/Flowedit/flowedit/resources/default_speaker.wav",
