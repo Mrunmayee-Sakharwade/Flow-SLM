@@ -221,13 +221,34 @@ class AudioSynthesizer:
     Default voice is 'michael' using zero-shot speaker conditioning on michael.wav.
     """
 
+    @staticmethod
+    def _resolve_flowedit_url(explicit_url: Optional[str] = None) -> Optional[str]:
+        """Resolve active FlowEdit API endpoint URL (prioritizes port 8004 where FlowEdit runs, then 8000)."""
+        if explicit_url:
+            return explicit_url.rstrip("/")
+        env_url = os.getenv("FLOWEDIT_URL")
+        if env_url:
+            return env_url.rstrip("/")
+
+        import urllib.request
+        for port in [8004, 8000]:
+            cand = f"http://127.0.0.1:{port}"
+            try:
+                with urllib.request.urlopen(f"{cand}/api/spelling?refresh=false", timeout=0.6) as resp:
+                    if resp.status == 200:
+                        logger.info(f"[AudioSynthesizer] Connected to active FlowEdit service at {cand}")
+                        return cand
+            except Exception:
+                continue
+        return "http://127.0.0.1:8004"
+
     def __init__(
         self,
         default_voice: str = "michael",
         flowedit_url: Optional[str] = None
     ):
         self.default_voice = os.getenv("DEFAULT_TTS_VOICE", default_voice)
-        self.flowedit_url = flowedit_url or os.getenv("FLOWEDIT_URL", "http://127.0.0.1:8000")
+        self.flowedit_url = self._resolve_flowedit_url(flowedit_url)
         self.flowedit_inference = None
         self._flowedit_ready = False
         self._phonetic_normalizer = None
@@ -510,6 +531,8 @@ class AudioSynthesizer:
                 - voice (str)
         """
         t0 = time.perf_counter()
+        # ALWAYS apply FlowEdit phonetic corrections and oncology normalization before synthesis
+        normalized_text = self._normalize_text(text)
         target_voice = voice or self.default_voice
         speaker_wav = self._get_speaker_wav(target_voice)
 
@@ -520,14 +543,14 @@ class AudioSynthesizer:
         # 1. Try local FlowEdit model if loaded
         if self._flowedit_ready and self.flowedit_inference:
             try:
-                audio_bytes, audio_format = self._synthesize_flowedit_local(text, target_voice)
+                audio_bytes, audio_format = self._synthesize_flowedit_local(normalized_text, target_voice)
                 engine_used = "FlowEdit (Local XTTS/F5-TTS + Hopfield Memory)"
             except Exception as e:
                 logger.warning(f"Local FlowEdit synthesis failed: {e}. Falling back to neural.")
 
         # 2. Try remote FlowEdit server if configured
         if audio_bytes is None and self.flowedit_url:
-            remote_res = self._synthesize_flowedit_remote(text, target_voice)
+            remote_res = self._synthesize_flowedit_remote(normalized_text, target_voice)
             if remote_res:
                 audio_bytes, audio_format = remote_res
                 engine_used = f"FlowEdit (Remote Server {self.flowedit_url})"
@@ -542,15 +565,15 @@ class AudioSynthesizer:
                         import concurrent.futures
                         with concurrent.futures.ThreadPoolExecutor() as pool:
                             audio_bytes, audio_format = pool.submit(
-                                lambda: asyncio.run(asyncio.wait_for(self._synthesize_edge_tts(text, target_voice, rate), timeout=3.5))
+                                lambda: asyncio.run(asyncio.wait_for(self._synthesize_edge_tts(normalized_text, target_voice, rate), timeout=3.5))
                             ).result()
                     else:
                         audio_bytes, audio_format = loop.run_until_complete(
-                            asyncio.wait_for(self._synthesize_edge_tts(text, target_voice, rate), timeout=3.5)
+                            asyncio.wait_for(self._synthesize_edge_tts(normalized_text, target_voice, rate), timeout=3.5)
                         )
                 except RuntimeError:
                     audio_bytes, audio_format = asyncio.run(
-                        asyncio.wait_for(self._synthesize_edge_tts(text, target_voice, rate), timeout=3.5)
+                        asyncio.wait_for(self._synthesize_edge_tts(normalized_text, target_voice, rate), timeout=3.5)
                     )
                 engine_used = f"FlowEdit Neural Voice ({target_voice.capitalize()})"
             except Exception as e:
@@ -559,14 +582,14 @@ class AudioSynthesizer:
 
         # 4. HTTPS Firewall-Resilient Speech Fallback (Standard HTTPS port 443)
         if audio_bytes is None:
-            https_res = self._synthesize_https_tts(text)
+            https_res = self._synthesize_https_tts(normalized_text)
             if https_res:
                 audio_bytes, audio_format = https_res
                 engine_used = f"FlowEdit HTTPS Voice ({target_voice.capitalize()})"
 
         # 5. Emergency synthetic WAV fallback (espeak/pyttsx3/silent)
         if audio_bytes is None:
-            audio_bytes, audio_format = self._generate_fallback_audio(text)
+            audio_bytes, audio_format = self._generate_fallback_audio(normalized_text)
             engine_used = "Synthetic Audio Fallback"
 
         latency_ms = round((time.perf_counter() - t0) * 1000, 1)

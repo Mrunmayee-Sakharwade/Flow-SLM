@@ -210,7 +210,8 @@ class S3SpellingStore:
             f"(sense='{resolved_sense_id}', carrier='{carrier_text}')"
         )
 
-        # Sync to S3 bucket
+        # Sync to local cache and S3 bucket
+        self._save_local_cache()
         s3_res = self.sync_to_s3()
 
         return {
@@ -227,26 +228,107 @@ class S3SpellingStore:
             "total_entries": len(self._dictionary),
         }
 
-    def _ensure_loaded(self) -> None:
-        """Ensure dictionary is loaded from S3 bucket on demand if empty."""
-        if not self._dictionary and self.bucket_name:
+    def _get_local_cache_paths(self) -> List[str]:
+        """Candidate local disk paths to cache and persist spelling dictionary."""
+        cands = [
+            "/home/rsurya/projects/flow_edit/spelling_dictionary.json",
+            "/home/rsurya/projects/flow_edit/Flowedit/spelling_dictionary.json",
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "spelling_dictionary.json"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "spelling_dictionary.json"),
+            os.path.abspath("spelling_dictionary.json"),
+        ]
+        return [os.path.abspath(p) for p in cands]
+
+    def _save_local_cache(self) -> bool:
+        """Save in-memory dictionary to local cache files for cross-process synchronization."""
+        if not self._dictionary:
+            return False
+        payload = {
+            "version": "1.0",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "total_words": len(self._dictionary),
+            "words": self._dictionary,
+        }
+        content = json.dumps(payload, indent=2)
+        saved = False
+        for p in self._get_local_cache_paths():
             try:
-                self.load_from_s3()
-            except Exception as e:
-                logger.debug(f"[S3 Store] On-demand S3 load check notice: {e}")
+                os.makedirs(os.path.dirname(p), exist_ok=True)
+                with open(p, "w", encoding="utf-8") as f:
+                    f.write(content)
+                saved = True
+            except Exception:
+                continue
+        return saved
+
+    def _load_local_cache(self) -> bool:
+        """Load dictionary from local disk cache if available."""
+        for p in self._get_local_cache_paths():
+            if os.path.isfile(p) and os.path.getsize(p) > 10:
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    words = data.get("words", {})
+                    if isinstance(words, dict) and words:
+                        self._dictionary.update(words)
+                        logger.info(f"[S3 Store] Loaded {len(words)} corrections from local cache ({p})")
+                        return True
+                except Exception as e:
+                    logger.debug(f"Failed to load cache {p}: {e}")
+        return False
+
+    def _fetch_from_flowedit_api(self) -> bool:
+        """Synchronize dictionary from active running FlowEdit service (e.g. port 8004 or 8000)."""
+        import urllib.request
+        for port in [8004, 8000]:
+            try:
+                url = f"http://127.0.0.1:{port}/api/spelling?refresh=false"
+                req = urllib.request.Request(url, headers={"User-Agent": "FlowEdit-Store"})
+                with urllib.request.urlopen(req, timeout=1.2) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        if isinstance(data, list) and data:
+                            for entry in data:
+                                w = entry.get("word")
+                                if w:
+                                    self._dictionary[w.strip().lower()] = entry
+                            self._save_local_cache()
+                            logger.info(f"[S3 Store] Loaded {len(data)} corrections from active FlowEdit API (port {port})")
+                            return True
+            except Exception:
+                continue
+        return False
+
+    def _ensure_loaded(self) -> None:
+        """Ensure dictionary is loaded from S3 bucket, local cache, or active FlowEdit API."""
+        if not self._dictionary:
+            # 1. Try S3 bucket if configured
+            if self.bucket_name:
+                try:
+                    self.load_from_s3()
+                except Exception as e:
+                    logger.debug(f"[S3 Store] On-demand S3 load check notice: {e}")
+
+            # 2. Try local disk cache file
+            if not self._dictionary:
+                self._load_local_cache()
+
+            # 3. Try live FlowEdit service (e.g. port 8004 or 8000)
+            if not self._dictionary:
+                self._fetch_from_flowedit_api()
 
     def resolve_correction(self, text: str, word: str) -> Optional[str]:
         """Deterministically resolve the correct phonetic spelling for word in text context.
         
         Evaluates context compatibility against registered senses. If context does
-        not match the registered sense(s), returns None (preserves original word).
+        not match the registered sense(s), falls back to default phonetic spelling.
         
         Args:
             text: Full carrier sentence
             word: Target word
             
         Returns:
-            The replacement spelling string (e.g. 'red') or None if not registered/incompatible.
+            The replacement spelling string (e.g. 'red') or None if not registered.
         """
         self._ensure_loaded()
         word_key = word.strip().lower()
@@ -262,6 +344,13 @@ class S3SpellingStore:
         matched_sense = self.resolver.match_sense(text, word_key, senses)
         if matched_sense and "spell_as" in matched_sense:
             return matched_sense["spell_as"]
+
+        # CRITICAL FALLBACK: If homograph sense matching is ambiguous or returns None,
+        # return the default phonetic spelling or first registered sense spelling
+        if word_dict.get("default_spell"):
+            return word_dict["default_spell"]
+        if senses and "spell_as" in senses[0]:
+            return senses[0]["spell_as"]
 
         return None
 
@@ -452,6 +541,7 @@ class S3SpellingStore:
                 if replace:
                     self._dictionary.clear()
                 self._dictionary.update(loaded_words)
+                self._save_local_cache()
                 logger.info(f"[S3 Store] ✓ Loaded {len(loaded_words)} words from {self.bucket_name}/{key}")
                 return True
         except Exception as e:

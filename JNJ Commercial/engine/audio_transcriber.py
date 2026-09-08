@@ -55,6 +55,27 @@ class AudioTranscriber:
     post-corrects transcripts using S3 phonetic dictionary and Hopfield memory.
     """
 
+    @staticmethod
+    def _resolve_flowedit_url(explicit_url: Optional[str] = None) -> Optional[str]:
+        """Resolve active FlowEdit API endpoint URL (prioritizes port 8004 where FlowEdit runs, then 8000)."""
+        if explicit_url:
+            return explicit_url.rstrip("/")
+        env_url = os.getenv("FLOWEDIT_URL")
+        if env_url:
+            return env_url.rstrip("/")
+
+        import urllib.request
+        for port in [8004, 8000]:
+            cand = f"http://127.0.0.1:{port}"
+            try:
+                with urllib.request.urlopen(f"{cand}/api/spelling?refresh=false", timeout=0.6) as resp:
+                    if resp.status == 200:
+                        logger.info(f"[AudioTranscriber] Connected to active FlowEdit service at {cand}")
+                        return cand
+            except Exception:
+                continue
+        return "http://127.0.0.1:8004"
+
     def __init__(
         self,
         model_size: Optional[str] = None,
@@ -71,13 +92,13 @@ class AudioTranscriber:
             compute_type: CTranslate2 compute type ('float16', 'int8', 'float32').
                           Defaults to WHISPER_COMPUTE_TYPE env var or auto-detect.
             device: Device to run on ('cuda', 'cpu'). Auto-detected if not specified.
-            flowedit_url: URL to FlowEdit API service (default: FLOWEDIT_URL or http://127.0.0.1:8000)
+            flowedit_url: URL to FlowEdit API service (default: probes port 8004 then 8000)
         """
         self.model_size = model_size or os.getenv("WHISPER_MODEL_SIZE", "base")
         self.default_language = os.getenv("WHISPER_LANGUAGE", "en")
         self.device = device
         self.compute_type = compute_type or os.getenv("WHISPER_COMPUTE_TYPE", "")
-        self.flowedit_url = flowedit_url or os.getenv("FLOWEDIT_URL", "http://127.0.0.1:8000")
+        self.flowedit_url = self._resolve_flowedit_url(flowedit_url)
         self._model = None
         self._hopfield_memory = None
         self._last_memory_mtime = 0.0

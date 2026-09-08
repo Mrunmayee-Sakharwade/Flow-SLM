@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-09-08T12:46:28.836312+00:00",
+  "total_words": 1,
+  "words": {
+    "mihir": {
+      "word": "Mihir",
+      "default_spell": "Mee-heer",
+      "senses": [
+        {
+          "sense_id": "default",
+          "display_name": "Context: [mihir]",
+          "spell_as": "Mee-heer",
+          "carrier_text": "Mihir",
+          "context_window": "mihir",
+          "left_tokens": [],
+          "right_tokens": [],
+          "immediate_left": "",
+          "immediate_right": "",
+          "context_clues": [],
+          "language": "en"
+        }
+      ]
+    }
+  }
+}
