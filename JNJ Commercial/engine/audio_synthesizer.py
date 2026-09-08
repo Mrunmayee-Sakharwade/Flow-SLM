@@ -43,7 +43,35 @@ def resolve_speaker_wav_file(voice_name: str) -> Optional[str]:
     target_key = "michael" if ("m" in v_clean or "male" in v_clean) else "blessing"
     target_file = f"{target_key}.wav"
 
-    # 1. Direct explicit environment variable overrides
+    # 1. Primary confirmed IIT server voice path (confirmed by user: /home/rsurya/projects/flow_edit/michael.wav)
+    primary_server_path = f"/home/rsurya/projects/flow_edit/{target_file}"
+    if os.path.isfile(primary_server_path):
+        sz = os.path.getsize(primary_server_path)
+        if sz > 1000:
+            print(f"[AudioSynthesizer] Found speaker reference '{target_file}': {primary_server_path} ({sz} bytes)")
+            return os.path.abspath(primary_server_path)
+        else:
+            print(f"[AudioSynthesizer] Notice: '{primary_server_path}' exists but is only {sz} bytes (Git-LFS pointer). Restoring authentic audio...")
+            try:
+                from engine.embedded_voices import unpack_embedded_voice
+                unpacked = unpack_embedded_voice(target_key, primary_server_path)
+                if unpacked and os.path.isfile(unpacked) and os.path.getsize(unpacked) > 1000:
+                    print(f"[AudioSynthesizer] Restored authentic speaker reference: {unpacked} ({os.path.getsize(unpacked)} bytes)")
+                    return os.path.abspath(unpacked)
+            except Exception as e:
+                print(f"[AudioSynthesizer] Could not restore {primary_server_path}: {e}")
+    elif not os.path.exists(primary_server_path):
+        # Attempt to auto-place authentic voice reference at the confirmed primary path
+        try:
+            from engine.embedded_voices import unpack_embedded_voice
+            unpacked = unpack_embedded_voice(target_key, primary_server_path)
+            if unpacked and os.path.isfile(unpacked) and os.path.getsize(unpacked) > 1000:
+                print(f"[AudioSynthesizer] Placed authentic speaker reference at primary path: {unpacked}")
+                return os.path.abspath(unpacked)
+        except Exception:
+            pass
+
+    # 2. Direct explicit environment variable overrides
     env_explicit = os.getenv("MICHAEL_VOICE_PATH" if target_key == "michael" else "BLESSING_VOICE_PATH")
     if env_explicit and os.path.isfile(env_explicit) and os.path.getsize(env_explicit) > 1000:
         return os.path.abspath(env_explicit)
@@ -56,9 +84,10 @@ def resolve_speaker_wav_file(voice_name: str) -> Optional[str]:
                 if os.path.isfile(p) and os.path.getsize(p) > 1000:
                     return os.path.abspath(p)
 
-    # 2. Known server candidates (checked with case-insensitivity)
+    # 3. Known server candidates (checked with case-insensitivity)
     candidates = [
-        # Direct fine-tuned model and voices folders
+        # Direct server root and model folders
+        f"/home/rsurya/projects/flow_edit/{target_file}",
         f"/home/rsurya/projects/flow_edit/Flowedit/model/{target_file}",
         f"/home/rsurya/projects/flow_edit/Flowedit/model/voices/{target_file}",
         f"/home/rsurya/projects/flow_edit/Flowedit/model/{target_key.capitalize()}.wav",

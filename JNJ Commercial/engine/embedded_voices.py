@@ -17,10 +17,17 @@ def unpack_embedded_voice(voice_name: str, target_dir: str) -> str:
     target_file = "michael.wav" if is_michael else "blessing.wav"
     b64_data = MICHAEL_WAV_ZLIB_B64 if is_michael else BLESSING_WAV_ZLIB_B64
 
-    target_path = os.path.join(target_dir, target_file)
+    if target_dir.lower().endswith(".wav"):
+        target_path = target_dir
+        parent_dir = os.path.dirname(target_path)
+    else:
+        target_path = os.path.join(target_dir, target_file)
+        parent_dir = target_dir
+
     if not os.path.exists(target_path) or os.path.getsize(target_path) < 1000:
         try:
-            os.makedirs(target_dir, exist_ok=True)
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
             raw = zlib.decompress(base64.b64decode(b64_data))
             with open(target_path, "wb") as f:
                 f.write(raw)

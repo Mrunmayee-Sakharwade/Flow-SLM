@@ -114,14 +114,16 @@ class FlowEditInference:
                 workspace_root = os.path.dirname(flowedit_root)
 
                 cands = [
+                    # Primary confirmed IIT server path
+                    f"/home/rsurya/projects/flow_edit/{target_filename}",
+                    f"/home/rsurya/projects/flow_edit/Flowedit/model/{target_filename}",
+                    f"/home/rsurya/projects/flow_edit/Flowedit/deploy_voices/{target_filename}",
+                    f"/home/rsurya/projects/flow_edit/Flowedit/flowedit/resources/{target_filename}",
                     os.path.join(flowedit_root, "model", target_filename),
                     os.path.join(flowedit_root, "deploy_voices", target_filename),
                     os.path.join(pkg_dir, "resources", target_filename),
                     os.path.join(workspace_root, target_filename),
                     os.path.join(workspace_root, "Flow-SLM", target_filename),
-                    f"/home/rsurya/projects/flow_edit/Flowedit/model/{target_filename}",
-                    f"/home/rsurya/projects/flow_edit/Flowedit/deploy_voices/{target_filename}",
-                    f"/home/rsurya/projects/flow_edit/{target_filename}",
                     f"/home/rsurya/projects/flow_edit/Flow-SLM/{target_filename}",
                     # Fallback to default_speaker.wav
                     os.path.join(pkg_dir, "resources", "default_speaker.wav"),
