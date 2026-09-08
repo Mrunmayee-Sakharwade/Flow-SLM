@@ -358,7 +358,11 @@ document.addEventListener("DOMContentLoaded", () => {
     { regex: /\b(prior\s+auto|prior\s+auth|p\s*a\s+denial|pa\s+barrier|prior\s+authorization)\b/gi, replacement: "prior authorization", category: "Access" },
     { regex: /\b(veeva|veeva\s+crm|viva)\b/gi, replacement: "Veeva CRM", category: "System" },
     { regex: /\b(carepath|care\s+path|patient\s+hub|access\s+hub)\b/gi, replacement: "CarePath Hub", category: "Reimbursement" },
-    { regex: /\b(formularly|formula\s+ry|formulary\s+status)\b/gi, replacement: "formulary", category: "Payer" }
+    { regex: /\b(formularly|formula\s+ry|formulary\s+status)\b/gi, replacement: "formulary", category: "Payer" },
+
+    // HCP Names & Clinical Accounts
+    { regex: /\bdr\.?\s*(unrug|anrug|anuragh|unrag)\b/gi, replacement: "Dr. Anurag", category: "HCP" },
+    { regex: /\b(unrug|anrug|anuragh)\b/gi, replacement: "Anurag", category: "HCP" }
   ];
 
   const FILLER_WORDS_REGEX = /\b(um+|uh+|er+|ah+|like|you\s+know|basically|literally|sort\s+of|kind\s+of|i\s+mean)\b[,.]?/gi;

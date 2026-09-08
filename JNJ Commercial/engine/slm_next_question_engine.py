@@ -969,14 +969,19 @@ class SLMNextQuestionEngine:
         first_word = q_stripped.split()[0].lower() if q_stripped.split() else ""
         not_a_question = first_word not in valid_question_starters
 
+        prior_ai_questions = [h.get("text", "").strip().lower() for h in (conversation_history or []) if h.get("speaker") == "AI"]
+
         if is_statement or has_multiple_sentences or not_a_question:
-            if kg_fallback:
+            if kg_fallback and kg_fallback.strip().lower() not in prior_ai_questions:
                 question_text = kg_fallback
             else:
                 # Synthesize a clean contextual question when kg_fallback is unavailable
                 hcp_display = known_hcp or "the doctor"
                 if role == "OS":
-                    question_text = f"What is the target timing or next scheduled touchpoint with {hcp_display} for {brand}?"
+                    if any("timing" in q or "touchpoint" in q or "scheduled" in q for q in prior_ai_questions):
+                        question_text = "Got it. I have the main points. Are we ready to finish?"
+                    else:
+                        question_text = f"What is the target timing or next scheduled touchpoint with {hcp_display} for {brand}?"
                 else:
                     question_text = f"What next reimbursement or access milestone did you align on with {hcp_display} for {brand}?"
 
@@ -1016,25 +1021,22 @@ class SLMNextQuestionEngine:
             if any(w in ans_lower for w in ["bcg failure", "post bcg", "unresponsive", "completed full course", "medical history", "suitable"]) and any(w in question_text.lower() for w in ["friction", "procedure room", "in-service", "administration"]):
                 question_text = kg_fallback
         # Rule 2: Anti-Repetition Guard (Never ask a question already in history)
-        prior_ai_questions = [h.get("text", "").strip().lower() for h in (conversation_history or []) if h.get("speaker") == "AI"]
         q_clean = question_text.strip().lower()
         
-        if q_clean in prior_ai_questions:
+        if q_clean in prior_ai_questions or any(q_clean in prev or prev in q_clean for prev in prior_ai_questions):
             if kg_fallback and kg_fallback.strip().lower() not in prior_ai_questions:
                 question_text = kg_fallback
             else:
                 hcp = known_hcp or "the doctor"
                 if role == "OS":
-                    if "timing" not in history_str_lower and "when" not in history_str_lower:
-                        question_text = "What is the timing for the next step?"
+                    if not any("timing" in q or "touchpoint" in q or "scheduled" in q for q in prior_ai_questions):
+                        question_text = f"What is the target timing or next scheduled touchpoint with {hcp} for {brand}?"
                     elif "support" not in history_str_lower and "resource" not in history_str_lower:
                         question_text = f"Did {hcp} mention any support or resources needed?"
                     elif "action items" not in history_str_lower and "follow-up" not in history_str_lower:
                         question_text = "Any follow-up or action items from the call?"
-                    elif "account context" not in history_str_lower:
-                        question_text = "Any other account context to capture?"
                     else:
-                        question_text = "I have enough for the call note. Should we wrap here?"
+                        question_text = "Got it. I have the main points. Are we ready to finish?"
 
         # Rule 2.5: Re-enforce entity replacement in case fallback was used
         if known_hcp:

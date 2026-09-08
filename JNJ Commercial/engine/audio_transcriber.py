@@ -235,6 +235,9 @@ class AudioTranscriber:
         except Exception:
             pass
 
+        base_oncology_prompt = "Dr. Anurag, Inlexzo, Rybrevant, Lazcluze, Balversa, Apollo Hospital, Fortis, Manipal, Max Healthcare, Narayana, NMIBC, NSCLC, BCG-unresponsive."
+        prompt_parts.append(base_oncology_prompt)
+
         return " ".join(prompt_parts).strip()
 
     def transcribe(
@@ -327,7 +330,9 @@ class AudioTranscriber:
                 total_confidence += math.exp(seg.avg_logprob)
 
             raw_transcript = " ".join(full_text_parts).strip()
-            transcript = raw_transcript
+            # Domain-specific phonetic normalization for Whisper STT
+            transcript = re.sub(r'\bdr\.?\s*(unrug|anrug|anuragh|unrag)\b', 'Dr. Anurag', raw_transcript, flags=re.IGNORECASE)
+            transcript = re.sub(r'\b(unrug|anrug|anuragh)\b', 'Anurag', transcript, flags=re.IGNORECASE)
             s3_applied = []
             hopfield_applied = []
 

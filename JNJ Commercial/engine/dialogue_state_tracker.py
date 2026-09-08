@@ -105,10 +105,25 @@ class DialogueSession:
         })
         
         curr_q = self.current_question or ""
-        is_asking_wrap = bool(re.search(r'\b(wrap(\s*up|\s*here)?|close\s*out|enough for the call note)\b', curr_q, re.IGNORECASE))
-        is_greeting_refusal = (self.current_state == "STATE_0_GREETING_INITIATION" and bool(re.match(r'^(no|not now|busy|don\'?t have time|no time|later)[.!]?$', ans_lower)))
-        is_explicit_stop = bool(re.search(r'\b(close\s*(out)?\s*(the|this)?\s*call\s*note|close\s*note|end\s*(the)?\s*(call|session|interview)|stop\s*session|quit\s*note|wrap\s*(it|up|this)|please\s*wrap|wrap\s*up)\b', ans_lower))
-        is_affirmative = bool(re.search(r'\b(yes|yeah|sure|yep|ok|okay|wrap(\s*it|\s*up)?|close(\s*it)?|go\s*ahead|done|all\s*set|please|we\s*can)\b', ans_lower))
+        curr_q_lower = curr_q.lower()
+        ans_stripped = re.sub(r'[^\w\s]', '', ans_lower).strip()
+
+        is_asking_wrap = bool(re.search(
+            r'\b(wrap(\s*up|\s*here)?|close\s*out|enough for the call note|ready to finish|ready to close|finish\s*up|ready to wrap|any\s*other|anything\s*else|any\s*further|all\s*set)\b',
+            curr_q_lower
+        ))
+        is_greeting_refusal = (
+            self.current_state == "STATE_0_GREETING_INITIATION" and
+            bool(re.match(r'^(no|not now|busy|don\'?t have time|no time|later)[.!]?$', ans_lower))
+        )
+        is_explicit_stop = bool(re.search(
+            r'\b(hang\s*up(\s*(the|this)?\s*call)?|stop\s*(the|this)?\s*(call|conversation|session|note)|we\s*can\s*(hang\s*up|stop)|close\s*(out)?\s*(the|this)?\s*call\s*note|close\s*note|end\s*(the)?\s*(call|session|interview|conversation)|quit\s*note|wrap\s*(it|up|this)|please\s*wrap|wrap\s*up|nothing\s*else|that\'?s\s*all|thats\s*all|no\s*more|all\s*good|all\s*done|i\'?m\s*done|im\s*done|we\'?re\s*done|were\s*done)\b',
+            ans_lower
+        ))
+        is_affirmative = bool(re.search(
+            r'\b(yes|yeah|sure|yep|ok|okay|wrap(\s*it|\s*up)?|close(\s*it)?|go\s*ahead|done|all\s*set|please|we\s*can|no|nothing|none|all\s*good|that\'?s\s*all|thats\s*all|finish)\b',
+            ans_stripped
+        )) or ans_stripped in ["yes", "yeah", "sure", "yep", "ok", "okay", "done", "finish", "ready", "no", "nothing", "none"]
         is_wrap_up_confirmation = (is_asking_wrap or self.current_state == "STATE_7_WRAP_UP_CONFIRMATION") and is_affirmative
 
         if is_greeting_refusal:
@@ -127,8 +142,12 @@ class DialogueSession:
         if is_explicit_stop or is_wrap_up_confirmation:
             self.current_state = "COMPLETED"
             self.is_completed = True
-            hcp_disp = self.slots.get('hcp_name') or 'this visit'
-            closing_msg = f"Thank you, the call notes for {hcp_disp} have been captured and logged compliantly. Session closed."
+            hcp_disp = self.slots.get('hcp_name') or 'the physician'
+            acc_disp = self.slots.get('account_name')
+            loc_str = f" at {acc_disp}" if acc_disp else ""
+            user_disp = self.slots.get('user_name') or ""
+            prefix = f"Thank you {user_disp}, " if user_disp else "Thank you, "
+            closing_msg = f"{prefix}the call notes for {hcp_disp}{loc_str} have been captured and logged compliantly. Session closed."
             self.current_question = closing_msg
             self.history.append({
                 "speaker": "AI",
@@ -139,7 +158,7 @@ class DialogueSession:
             return
 
         # 5. Dynamically Advance Dialogue State based on conversation context and question topic
-        is_asking_wrap = bool(re.search(r'\b(wrap|close out|enough for the call note)\b', next_q or "", re.IGNORECASE))
+        is_asking_wrap = bool(re.search(r'\b(wrap|close out|enough for the call note|ready to finish|ready to close)\b', next_q or "", re.IGNORECASE))
         q_lower = (next_q or "").lower()
 
         if is_asking_wrap:

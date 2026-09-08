@@ -34,6 +34,60 @@ from engine.nlu_extractor import NLUExtractor
 from engine.slm_next_question_engine import SLMNextQuestionEngine
 from engine.dialogue_state_tracker import DialogueSession
 
+
+def check_session_end(candidate_answer: str, current_question: str, current_state: str) -> Dict[str, Any]:
+    """
+    Evaluates whether the user's response indicates session termination,
+    call closure, refusal, or confirmation to wrap up.
+    """
+    ans_clean = candidate_answer.strip()
+    ans_lower = ans_clean.lower()
+    ans_stripped = re.sub(r'[^\w\s]', '', ans_lower).strip()
+    curr_q = current_question or ""
+    curr_q_lower = curr_q.lower()
+
+    is_explicit_stop = bool(re.search(
+        r'\b(hang\s*up(\s*(the|this)?\s*call)?|stop\s*(the|this)?\s*(call|conversation|session|note)|we\s*can\s*(hang\s*up|stop)|close\s*(out)?\s*(the|this)?\s*call\s*note|close\s*note|end\s*(the)?\s*(call|session|interview|conversation)|quit\s*note|wrap\s*(it|up|this)|please\s*wrap|wrap\s*up|nothing\s*else|that\'?s\s*all|thats\s*all|no\s*more|all\s*good|all\s*done|i\'?m\s*done|im\s*done|we\'?re\s*done|were\s*done)\b',
+        ans_lower
+    ))
+    is_asking_wrap = bool(re.search(
+        r'\b(wrap(\s*up|\s*here)?|close\s*out|enough for the call note|ready to finish|ready to close|finish\s*up|ready to wrap|any\s*other|anything\s*else|any\s*further|all\s*set)\b',
+        curr_q_lower
+    ))
+    is_affirmative = bool(re.search(
+        r'\b(yes|yeah|sure|yep|ok|okay|wrap(\s*it|\s*up)?|close(\s*it)?|go\s*ahead|done|all\s*set|please|we\s*can|no|nothing|none|all\s*good|that\'?s\s*all|thats\s*all|finish)\b',
+        ans_stripped
+    )) or ans_stripped in ["yes", "yeah", "sure", "yep", "ok", "okay", "done", "finish", "ready", "no", "nothing", "none"]
+
+    is_wrap_up_confirmation = (is_asking_wrap or current_state == "STATE_7_WRAP_UP_CONFIRMATION") and is_affirmative
+    is_greeting_refusal = (
+        current_state == "STATE_0_GREETING_INITIATION" and
+        bool(re.match(r'^(no|not now|busy|don\'?t have time|no time|later)[.!]?$', ans_lower))
+    )
+
+    should_close = is_explicit_stop or is_wrap_up_confirmation or is_greeting_refusal
+    return {
+        "should_close": should_close,
+        "is_greeting_refusal": is_greeting_refusal,
+        "is_explicit_stop": is_explicit_stop,
+        "is_wrap_up_confirmation": is_wrap_up_confirmation,
+        "ans_stripped": ans_stripped,
+        "ans_lower": ans_lower
+    }
+
+
+def check_compliance_triage_answer(candidate_answer: str, current_question: str) -> bool:
+    """
+    Checks if the prior AI question was a compliance safety/MIR triage inquiry.
+    If so, user's response is an acknowledgment/answer rather than a new violation.
+    """
+    curr_q_lower = (current_question or "").lower()
+    return bool(re.search(
+        r'\b(medical safety|adverse event|formal triage|medical information request|msl|mir)\b',
+        curr_q_lower
+    ))
+
+
 class RuleGovernedCallBot:
     def __init__(
         self,
@@ -103,6 +157,8 @@ class RuleGovernedCallBot:
             return {"error": f"Session {session_id} not found."}
 
         # STEP 0: Apply FlowEdit S3 phonetic spelling corrections to incoming utterance
+        candidate_answer = re.sub(r'\bdr\.?\s*(unrug|anrug|anuragh)\b', 'Dr. Anurag', candidate_answer, flags=re.IGNORECASE)
+        candidate_answer = re.sub(r'\b(unrug|anrug|anuragh)\b', 'Anurag', candidate_answer, flags=re.IGNORECASE)
         s3_applied = []
         if s3_spelling_store:
             try:
@@ -150,9 +206,104 @@ class RuleGovernedCallBot:
         detected_topics = nlu_res["topics"]
         detected_entities = nlu_res["entities"]
         
-        # Update brand slot if newly detected
+        # Update slots if newly detected
         if detected_entities.get("brands"):
             session.slots["brand"] = detected_entities["brands"][0]
+        if detected_entities.get("hcps") and not session.slots.get("hcp_name"):
+            session.slots["hcp_name"] = detected_entities["hcps"][0]
+        if detected_entities.get("accounts") and not session.slots.get("account_name"):
+            session.slots["account_name"] = detected_entities["accounts"][0]
+
+        # STEP 1.1: Explicit Session End Check (Greeting Refusal, User Stop/Hang-Up Request, or Wrap Confirmation)
+        # Evaluated FIRST before compliance gates so stopping commands are always honored immediately.
+        end_check = check_session_end(candidate_answer, session.current_question or "", session.current_state)
+        if end_check["should_close"]:
+            session.update_state(candidate_answer=candidate_answer, nlu_result=nlu_res, next_q="")
+            latency_ms = round((time.perf_counter() - t_start) * 1000, 1)
+            msg = session.current_question or "Call note completed."
+            gen_tokens = len(msg.split())
+            metrics = {
+                "type": "metrics",
+                "ttft_ms": latency_ms,
+                "trt_ms": latency_ms,
+                "first_token_latency_ms": latency_ms,
+                "tokens_per_second": 0.0,
+                "generated_tokens": gen_tokens,
+                "num_tokens": gen_tokens,
+                "total_generation_time_ms": latency_ms
+            }
+            return _format_result({
+                "status": "SESSION_CLOSED",
+                "role": session.role,
+                "current_state": "COMPLETED",
+                "bot_message": msg,
+                "is_completed": True,
+                "slots": session.slots,
+                "latency_ms": latency_ms,
+                "trt_ms": latency_ms,
+                "ttft_ms": latency_ms,
+                "generated_tokens": gen_tokens,
+                "num_tokens": gen_tokens,
+                "tokens_per_second": 0.0,
+                "latency_formatted": f"{latency_ms:.0f}ms",
+                "metrics": metrics,
+                "session_summary": session.get_summary()
+            })
+
+        # STEP 1.2: Compliance Triage Answer Handling (Break infinite loops on safety questions)
+        if check_compliance_triage_answer(candidate_answer, session.current_question or ""):
+            session.slots["safety_triage_answer"] = candidate_answer
+            session.covered_topics.add("adverse events triage")
+            hcp_disp = session.slots.get("hcp_name") or "the physician"
+            ans_clean_test = end_check["ans_stripped"]
+            if ans_clean_test in ["no", "nope", "not yet", "havent", "haven't", "none"]:
+                ack_msg = f"Understood, that has been noted for safety compliance triage. Did you schedule any follow-up touchpoint with {hcp_disp}, or are we ready to wrap up?"
+            else:
+                ack_msg = f"Thank you, confirmed that this was reported for safety triage. Did you schedule any follow-up touchpoint with {hcp_disp}, or are we ready to wrap up?"
+            
+            session.history.append({
+                "speaker": "User",
+                "text": candidate_answer,
+                "turn_index": session.turn_index,
+                "state": session.current_state
+            })
+            session.turn_index += 1
+            session.current_question = ack_msg
+            session.history.append({
+                "speaker": "AI",
+                "text": ack_msg,
+                "turn_index": session.turn_index,
+                "state": session.current_state
+            })
+            latency_ms = round((time.perf_counter() - t_start) * 1000, 1)
+            gen_tokens = len(ack_msg.split())
+            metrics = {
+                "type": "metrics",
+                "ttft_ms": latency_ms,
+                "trt_ms": latency_ms,
+                "first_token_latency_ms": latency_ms,
+                "tokens_per_second": 0.0,
+                "generated_tokens": gen_tokens,
+                "num_tokens": gen_tokens,
+                "total_generation_time_ms": latency_ms
+            }
+            return _format_result({
+                "status": "COMPLIANCE_TRIAGE_ACK",
+                "role": session.role,
+                "current_state": session.current_state,
+                "bot_message": ack_msg,
+                "is_completed": False,
+                "slots": session.slots,
+                "latency_ms": latency_ms,
+                "trt_ms": latency_ms,
+                "ttft_ms": latency_ms,
+                "generated_tokens": gen_tokens,
+                "num_tokens": gen_tokens,
+                "tokens_per_second": 0.0,
+                "latency_formatted": f"{latency_ms:.0f}ms",
+                "metrics": metrics,
+                "session_summary": session.get_summary()
+            })
 
         # STEP 1.5: Out-Of-Domain / Irrelevant Input Check
         ood_result = self.nlu.check_out_of_domain(candidate_answer)
@@ -247,7 +398,7 @@ class RuleGovernedCallBot:
         gate_res = {"gate_triggered": False, "static_weight": 0.30, "dynamic_weight": 0.70}
         if getattr(self.kg_retriever, "embedder", None):
             gate_res = self.kg_retriever.embedder.evaluate_compliance_gate(
-                candidate_answer, role=session.role, semantic_threshold=0.58
+                candidate_answer, role=session.role, semantic_threshold=0.78
             )
 
         scope_res = self.kg.evaluate_role_scope(session.role, detected_topics, candidate_answer)
@@ -269,7 +420,7 @@ class RuleGovernedCallBot:
                 sim_score = 1.0
                 if session.role.upper() == "FRM":
                     redirect_msg = (
-                        "Under J&J commercial compliance guidelines, clinical trial efficacy, survival curves, "
+                        "Under commercial compliance guidelines, clinical trial efficacy, survival curves, "
                         "and biomarker data must be addressed by Medical Affairs. Did you inform the physician "
                         "that an MSL will follow up through a formal Medical Information Request (MIR)?"
                     )
@@ -308,49 +459,6 @@ class RuleGovernedCallBot:
                 "compliance_override": True,
                 "tier": tier,
                 "similarity_score": sim_score,
-                "latency_ms": latency_ms,
-                "trt_ms": latency_ms,
-                "ttft_ms": latency_ms,
-                "generated_tokens": gen_tokens,
-                "num_tokens": gen_tokens,
-                "tokens_per_second": 0.0,
-                "latency_formatted": f"{latency_ms:.0f}ms",
-                "metrics": metrics,
-                "session_summary": session.get_summary()
-            })
-
-        # STEP 2: Explicit Session End Check (Greeting Refusal, User Close Request, or Wrap-up Confirmation)
-        ans_clean = candidate_answer.strip()
-        ans_lower = ans_clean.lower()
-        curr_q = session.current_question or ""
-        is_asking_wrap = bool(re.search(r'\b(wrap(\s*up|\s*here)?|close\s*out|enough for the call note|any\s*other|anything\s*else|any\s*further)\b', curr_q, re.IGNORECASE))
-        is_greeting_refusal = (session.current_state == "STATE_0_GREETING_INITIATION" and bool(re.match(r'^(no|not now|busy|don\'?t have time|no time|later)[.!]?$', ans_lower)))
-        is_explicit_stop = bool(re.search(r'\b(close\s*(out)?\s*(the|this)?\s*call\s*note|close\s*note|end\s*(the)?\s*(call|session|interview)|stop\s*session|quit\s*note|wrap\s*(it|up|this)|please\s*wrap|wrap\s*up|nothing\s*else|that\'?s\s*all|no\s*more|all\s*good)\b', ans_lower))
-        is_affirmative = bool(re.search(r'\b(yes|yeah|sure|yep|ok|okay|wrap(\s*it|\s*up)?|close(\s*it)?|go\s*ahead|done|all\s*set|please|we\s*can|no|nothing|none|all\s*good|that\'?s\s*all)\b', ans_lower))
-        is_wrap_up_confirmation = (is_asking_wrap or session.current_state == "STATE_7_WRAP_UP_CONFIRMATION") and is_affirmative
-
-        if is_greeting_refusal or is_explicit_stop or is_wrap_up_confirmation:
-            session.update_state(candidate_answer=candidate_answer, nlu_result=nlu_res, next_q="")
-            latency_ms = round((time.perf_counter() - t_start) * 1000, 1)
-            msg = session.current_question or "Call note completed."
-            gen_tokens = len(msg.split())
-            metrics = {
-                "type": "metrics",
-                "ttft_ms": latency_ms,
-                "trt_ms": latency_ms,
-                "first_token_latency_ms": latency_ms,
-                "tokens_per_second": 0.0,
-                "generated_tokens": gen_tokens,
-                "num_tokens": gen_tokens,
-                "total_generation_time_ms": latency_ms
-            }
-            return _format_result({
-                "status": "SESSION_CLOSED",
-                "role": session.role,
-                "current_state": "COMPLETED",
-                "bot_message": msg,
-                "is_completed": True,
-                "slots": session.slots,
                 "latency_ms": latency_ms,
                 "trt_ms": latency_ms,
                 "ttft_ms": latency_ms,
@@ -509,6 +617,8 @@ class RuleGovernedCallBot:
             return
 
         # STEP 0: Apply FlowEdit S3 phonetic spelling corrections to incoming utterance
+        candidate_answer = re.sub(r'\bdr\.?\s*(unrug|anrug|anuragh)\b', 'Dr. Anurag', candidate_answer, flags=re.IGNORECASE)
+        candidate_answer = re.sub(r'\b(unrug|anrug|anuragh)\b', 'Anurag', candidate_answer, flags=re.IGNORECASE)
         s3_applied = []
         if s3_spelling_store:
             try:
@@ -551,6 +661,114 @@ class RuleGovernedCallBot:
         nlu_res = self.nlu.analyze_utterance(candidate_answer)
         detected_topics = nlu_res["topics"]
         detected_entities = nlu_res["entities"]
+
+        # Update slots if newly detected
+        if detected_entities.get("brands"):
+            session.slots["brand"] = detected_entities["brands"][0]
+        if detected_entities.get("hcps") and not session.slots.get("hcp_name"):
+            session.slots["hcp_name"] = detected_entities["hcps"][0]
+        if detected_entities.get("accounts") and not session.slots.get("account_name"):
+            session.slots["account_name"] = detected_entities["accounts"][0]
+
+        # STEP 1.1: Explicit Session End Check (Greeting Refusal, User Stop/Hang-Up Request, or Wrap Confirmation)
+        # Evaluated FIRST before compliance gates so stopping commands are always honored immediately.
+        end_check = check_session_end(candidate_answer, session.current_question or "", session.current_state)
+        if end_check["should_close"]:
+            session.update_state(candidate_answer=candidate_answer, nlu_result=nlu_res, next_q="")
+            latency_ms = round((time.perf_counter() - t_start) * 1000, 2)
+            msg = session.current_question or "Call note completed."
+            if msg:
+                yield {"type": "token", "token": msg}
+            gen_tokens = len(msg.split()) if msg else 0
+            metrics = {
+                "type": "metrics",
+                "ttft_ms": latency_ms,
+                "trt_ms": latency_ms,
+                "first_token_latency_ms": latency_ms,
+                "tokens_per_second": 0.0,
+                "generated_tokens": gen_tokens,
+                "num_tokens": gen_tokens,
+                "total_generation_time_ms": latency_ms
+            }
+            yield metrics
+            yield _format_stream_result({
+                "type": "result",
+                "status": "SESSION_CLOSED",
+                "role": session.role,
+                "current_state": "COMPLETED",
+                "bot_message": msg,
+                "is_completed": True,
+                "slots": session.slots,
+                "session_summary": session.get_summary(),
+                "metrics": metrics,
+                "latency_ms": latency_ms,
+                "trt_ms": latency_ms,
+                "ttft_ms": latency_ms,
+                "generated_tokens": gen_tokens,
+                "num_tokens": gen_tokens,
+                "tokens_per_second": 0.0,
+                "latency_formatted": f"{latency_ms:.0f}ms"
+            })
+            return
+
+        # STEP 1.2: Compliance Triage Answer Handling (Break infinite loops on safety questions)
+        if check_compliance_triage_answer(candidate_answer, session.current_question or ""):
+            session.slots["safety_triage_answer"] = candidate_answer
+            session.covered_topics.add("adverse events triage")
+            hcp_disp = session.slots.get("hcp_name") or "the physician"
+            ans_clean_test = end_check["ans_stripped"]
+            if ans_clean_test in ["no", "nope", "not yet", "havent", "haven't", "none"]:
+                ack_msg = f"Understood, that has been noted for safety compliance triage. Did you schedule any follow-up touchpoint with {hcp_disp}, or are we ready to wrap up?"
+            else:
+                ack_msg = f"Thank you, confirmed that this was reported for safety triage. Did you schedule any follow-up touchpoint with {hcp_disp}, or are we ready to wrap up?"
+            
+            session.history.append({
+                "speaker": "User",
+                "text": candidate_answer,
+                "turn_index": session.turn_index,
+                "state": session.current_state
+            })
+            session.turn_index += 1
+            session.current_question = ack_msg
+            session.history.append({
+                "speaker": "AI",
+                "text": ack_msg,
+                "turn_index": session.turn_index,
+                "state": session.current_state
+            })
+            latency_ms = round((time.perf_counter() - t_start) * 1000, 2)
+            gen_tokens = len(ack_msg.split())
+            yield {"type": "token", "token": ack_msg}
+            metrics = {
+                "type": "metrics",
+                "ttft_ms": latency_ms,
+                "trt_ms": latency_ms,
+                "first_token_latency_ms": latency_ms,
+                "tokens_per_second": 0.0,
+                "generated_tokens": gen_tokens,
+                "num_tokens": gen_tokens,
+                "total_generation_time_ms": latency_ms
+            }
+            yield metrics
+            yield _format_stream_result({
+                "type": "result",
+                "status": "COMPLIANCE_TRIAGE_ACK",
+                "role": session.role,
+                "current_state": session.current_state,
+                "bot_message": ack_msg,
+                "is_completed": False,
+                "slots": session.slots,
+                "latency_ms": latency_ms,
+                "trt_ms": latency_ms,
+                "ttft_ms": latency_ms,
+                "generated_tokens": gen_tokens,
+                "num_tokens": gen_tokens,
+                "tokens_per_second": 0.0,
+                "latency_formatted": f"{latency_ms:.0f}ms",
+                "metrics": metrics,
+                "session_summary": session.get_summary()
+            })
+            return
 
         # STEP 1.5: Out-Of-Domain / Irrelevant Input Check
         ood_result = self.nlu.check_out_of_domain(candidate_answer)
@@ -653,7 +871,7 @@ class RuleGovernedCallBot:
         gate_res = {"gate_triggered": False, "static_weight": 0.30, "dynamic_weight": 0.70}
         if getattr(self.kg_retriever, "embedder", None):
             gate_res = self.kg_retriever.embedder.evaluate_compliance_gate(
-                candidate_answer, role=session.role, semantic_threshold=0.58
+                candidate_answer, role=session.role, semantic_threshold=0.78
             )
 
         scope_res = self.kg.evaluate_role_scope(session.role, detected_topics, candidate_answer)
@@ -675,7 +893,7 @@ class RuleGovernedCallBot:
                 sim_score = 1.0
                 if session.role.upper() == "FRM":
                     redirect_msg = (
-                        "Under J&J commercial compliance guidelines, clinical trial efficacy, survival curves, "
+                        "Under commercial compliance guidelines, clinical trial efficacy, survival curves, "
                         "and biomarker data must be addressed by Medical Affairs. Did you inform the physician "
                         "that an MSL will follow up through a formal Medical Information Request (MIR)?"
                     )
@@ -726,53 +944,6 @@ class RuleGovernedCallBot:
                 "tokens_per_second": 0.0,
                 "latency_formatted": f"{latency_ms:.0f}ms",
                 "session_summary": session.get_summary()
-            })
-            return
-
-        # STEP 2: Explicit Session End Check (Greeting Refusal, User Close Request, or Wrap-up Confirmation)
-        ans_clean = candidate_answer.strip()
-        ans_lower = ans_clean.lower()
-        is_greeting_refusal = (session.current_state == "STATE_0_GREETING_INITIATION" and bool(re.match(r'^(no|not now|busy|don\'?t have time|no time|later)[.!]?$', ans_lower)))
-        is_explicit_stop = bool(re.search(r'\b(close\s*(out)?\s*(the|this)?\s*call\s*note|close\s*note|end\s*(the)?\s*(call|session|interview)|stop\s*session|quit\s*note|wrap\s*(it|up|this)|please\s*wrap|wrap\s*up|nothing\s*else|that\'?s\s*all|no\s*more|all\s*good)\b', ans_lower))
-        curr_q = session.current_question or ""
-        is_asking_wrap = bool(re.search(r'\b(wrap(\s*up|\s*here)?|close\s*out|enough for the call note|any\s*other|anything\s*else|any\s*further)\b', curr_q, re.IGNORECASE))
-        is_affirmative = bool(re.search(r'\b(yes|yeah|sure|yep|ok|okay|wrap(\s*it|\s*up)?|close(\s*it)?|go\s*ahead|done|all\s*set|please|we\s*can|no|nothing|none|all\s*good|that\'?s\s*all)\b', ans_lower))
-        is_wrap_up_confirmation = (is_asking_wrap or session.current_state == "STATE_7_WRAP_UP_CONFIRMATION") and is_affirmative
-
-        if is_greeting_refusal or is_explicit_stop or is_wrap_up_confirmation:
-            session.update_state(candidate_answer=candidate_answer, nlu_result=nlu_res, next_q="")
-            latency_ms = round((time.perf_counter() - t_start) * 1000, 2)
-            msg = session.current_question
-            if msg:
-                yield {"type": "token", "token": msg}
-            metrics = {
-                "type": "metrics",
-                "ttft_ms": latency_ms,
-                "trt_ms": latency_ms,
-                "first_token_latency_ms": latency_ms,
-                "tokens_per_second": 0.0,
-                "generated_tokens": len(msg.split()) if msg else 0,
-                "num_tokens": len(msg.split()) if msg else 0,
-                "total_generation_time_ms": latency_ms
-            }
-            yield metrics
-            yield _format_stream_result({
-                "type": "result",
-                "status": "SESSION_CLOSED",
-                "role": session.role,
-                "current_state": "COMPLETED",
-                "bot_message": session.current_question,
-                "is_completed": True,
-                "slots": session.slots,
-                "session_summary": session.get_summary(),
-                "metrics": metrics,
-                "latency_ms": latency_ms,
-                "trt_ms": latency_ms,
-                "ttft_ms": latency_ms,
-                "generated_tokens": len(msg.split()) if msg else 0,
-                "num_tokens": len(msg.split()) if msg else 0,
-                "tokens_per_second": 0.0,
-                "latency_formatted": f"{latency_ms:.0f}ms"
             })
             return
 

@@ -31,7 +31,7 @@ FLAT_SYSTEM_PROMPT = (
     "Requirements:\n"
     "- Ask exactly one question.\n"
     "- The question must follow naturally from the latest user response.\n"
-    "- The question must focus on the target topic and adhere to the active J&J Core Responsibility.\n"
+    "- The question must focus on the target topic and adhere to the active Commercial Core Responsibility.\n"
     "- Use only information available in the conversation history.\n"
     "- Do not repeat questions that have already been asked or ask for information already provided.\n"
     "- Do not answer the user.\n"
@@ -835,7 +835,7 @@ class KGContextRetriever:
         prior_ai = [h.get("text", "").lower() for h in (conversation_history or []) if h.get("speaker") == "AI"]
         cand_lower = (candidate_answer or "").strip().lower()
         hist_text = " ".join([h.get("text", "") for h in (conversation_history or [])]).lower()
-        has_known_hcp = any(w in hist_text or w in cand_lower for w in ["dr.", "dr ", "doctor"])
+        has_known_hcp = (hcp_name and hcp_name.lower() != "the doctor") or any(w in hist_text or w in cand_lower for w in ["dr.", "dr ", "doctor"])
 
         default_role_brand = "INLEXZO" if role_upper == "OS" else "RYBREVANT"
         if any(w in (cand_lower + " " + hist_text) for w in ["nmibc", "bladder", "bcg", "anurag", "apollo"]) or (brand and "inlexzo" in brand.lower()):
@@ -856,6 +856,15 @@ class KGContextRetriever:
 
         acc_barrier = self.get_account_barrier(resolved_account, role_upper)
         self.last_barrier_case = None
+
+        # Clean candidate text without punctuation for robust matching
+        clean_cand = re.sub(r'[^\w\s]', '', cand_lower).strip()
+        stop_tokens = [
+            "hang up", "stop", "close note", "end call", "end session", "stop call",
+            "we can hang up", "we can stop", "quit", "done", "all set", "thats all", "that is all"
+        ]
+        if any(tok in clean_cand for tok in stop_tokens):
+            return f"Thank you, the call notes for {hcp_name} have been captured and logged compliantly. Session closed."
 
         # Dual-Case Barrier Check:
         # Case 1: If user introduces or asks about the barrier
@@ -878,7 +887,7 @@ class KGContextRetriever:
 
         if role_upper == "OS":
             # 0. User acknowledging greeting or hasn't identified doctor/account yet
-            if not has_known_hcp and not any(w in cand_lower for w in ["dr.", "dr ", "doctor"]):
+            if not has_known_hcp and not any(w in cand_lower for w in ["dr.", "dr ", "doctor"]) and (hcp_name == "the doctor"):
                 return "Who did you meet with, and where?"
 
             # 1. User answered Who/Where (Account Identification) -> Immediate Barrier Validation
@@ -941,10 +950,10 @@ class KGContextRetriever:
 
             # 6. User answered negatively / dismissively / topic not discussed
             # Covers: "no", "none", "no barriers", "as of now there are no barriers",
-            #         "we havent discussed about this", "not discussed", "didnt discuss", etc.
-            negative_starts = ["no", "none", "not really", "there arent", "there aren't", "as of now", "we havent", "we haven't", "haven't discussed", "havent discussed", "not discussed", "didnt discuss", "didn't discuss", "we didnt", "we didn't"]
-            negative_exact = ["no", "none", "no barriers", "none as of now", "no barrier"]
-            is_negative = any(cand_lower.startswith(w) for w in negative_starts) or cand_lower.strip() in negative_exact or any(w in cand_lower for w in ["no barriers", "no barrier", "havent discussed", "haven't discussed", "not discussed", "as of now there are no"])
+            #         "we havent discussed about this", "not discussed", "didnt discuss", "nothing", etc.
+            negative_starts = ["no", "none", "not really", "there arent", "there aren't", "as of now", "we havent", "we haven't", "haven't discussed", "havent discussed", "not discussed", "didnt discuss", "didn't discuss", "we didnt", "we didn't", "nothing"]
+            negative_exact = ["no", "none", "no barriers", "none as of now", "no barrier", "nothing", "nothing really", "not much", "nothing else"]
+            is_negative = any(clean_cand.startswith(w) for w in negative_starts) or clean_cand in negative_exact or any(w in clean_cand for w in ["no barriers", "no barrier", "havent discussed", "haven't discussed", "not discussed", "as of now there are no"])
             if is_negative:
                 if not any("timing" in q or "touchpoint" in q or "scheduled" in q for q in prior_ai):
                     return f"What is the target timing or next scheduled touchpoint with {hcp_name} for {brand_name}?"
@@ -955,7 +964,7 @@ class KGContextRetriever:
                 elif not any("account context" in q for q in prior_ai):
                     return "Any other account context to capture?"
                 else:
-                    return "I have enough for the call note. Should we wrap here?"
+                    return "Got it. I have the main points. Are we ready to finish?"
 
             # 7. User answered Timing ("couple of weeks", "next week", "next month", "weeks", "month", "days")
             if any(w in cand_lower for w in ["couple of weeks", "next week", "next month", "weeks", "month", "days"]):
@@ -965,7 +974,7 @@ class KGContextRetriever:
                     return "Any follow-up or action items from the call?"
                 elif not any("account context" in q for q in prior_ai):
                     return "Any other account context to capture?"
-                return "I have enough for the call note. Should we wrap here?"
+                return "Got it. I have the main points. Are we ready to finish?"
 
             # 8. User answered Support needed ("nothing at the moment", "no", "not right now")
             if any(w in cand_lower for w in ["not mention any thing", "nothing at the moment", "not at the moment", "no support", "nothing"]):
@@ -977,10 +986,10 @@ class KGContextRetriever:
 
             # 10. User answered Account Context ("this is all", "nothing else", "that's all", "that is all")
             if any(w in cand_lower for w in ["this is all", "nothing else", "that's all", "that is all", "all we have"]):
-                return "I have enough for the call note. Should we wrap here?"
+                return "Got it. I have the main points. Are we ready to finish?"
 
             # 11. User confirmed wrap up ("yes", "sure", "wrap it", "close it")
-            if cand_lower in ["yes", "yeah", "sure", "wrap it", "done", "ok", "okay", "yep"]:
+            if clean_cand in ["yes", "yeah", "sure", "wrap it", "done", "ok", "okay", "yep", "all set", "close it", "we can", "yes please"]:
                 return f"Thank you, the call notes for {hcp_name} have been captured and logged compliantly. Session closed."
 
             # Semantic Intent Matching via Embedding KG for any unscripted user phrasing

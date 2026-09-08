@@ -632,7 +632,7 @@ class KGEmbeddingEngine:
         self,
         utterance: str,
         role: str = "OS",
-        semantic_threshold: float = 0.58
+        semantic_threshold: float = 0.78
     ) -> Dict[str, Any]:
         """
         Evaluates the utterance against strict role compliance boundaries.
@@ -641,10 +641,10 @@ class KGEmbeddingEngine:
           Tier 1: Deterministic Keyword/Regex Lexicon (Fast-Path).
           Tier 2: MedEmbed Semantic Backstop for paraphrases.
           
-        If triggered:
-          Returns gate_triggered=True, static_weight=1.0, dynamic_weight=0.0,
-          and a predefined compliance redirection question.
-          The caller MUST BYPASS the SLM on gate trigger.
+        Safeguards:
+          - Conversational tokens, negations (e.g. 'No.', 'Nothing.'), and short turns
+            bypass Tier 2 semantic comparison to eliminate false-positive intercepts.
+          - Tier 2 semantic backstop requires >= 4 words AND clinical trigger keywords.
         """
         if not utterance or not utterance.strip():
             return {
@@ -656,6 +656,18 @@ class KGEmbeddingEngine:
 
         role_upper = (role or "OS").upper()
         text_clean = utterance.strip()
+        tokens = text_clean.split()
+        clean_lower = re.sub(r'[^\w\s]', '', text_clean.lower()).strip()
+
+        # Conversational tokens, negations, greetings, call control, short answers
+        CONVERSATIONAL_TOKENS = {
+            "no", "nope", "nah", "none", "nothing", "not really", "not now", "no more",
+            "yes", "yeah", "yep", "sure", "ok", "okay", "fine", "ready", "start",
+            "stop", "stop call", "stop the call", "stop the conversation", "hang up",
+            "we can hang up", "we can stop", "we can stop the conversation", "bye", "goodbye",
+            "done", "all done", "all set", "all good", "thats all", "that is all", "nothing else",
+            "later", "busy", "hello", "hi", "hey", "we can", "proceed", "go ahead"
+        }
 
         # -------------------------------------------------------------
         # TIER 1: Deterministic Keyword & Regex Lexicon (Fast-Path)
@@ -674,7 +686,7 @@ class KGEmbeddingEngine:
                     "static_weight": 1.0,
                     "dynamic_weight": 0.0,
                     "compliance_question": (
-                        "Under J&J commercial compliance guidelines, clinical trial efficacy, survival curves, "
+                        "Under commercial compliance guidelines, clinical trial efficacy, survival curves, "
                         "and biomarker data must be addressed by Medical Affairs. Did you inform the physician "
                         "that an MSL will follow up through a formal Medical Information Request (MIR)?"
                     )
@@ -699,8 +711,38 @@ class KGEmbeddingEngine:
                 }
 
         # -------------------------------------------------------------
-        # TIER 2: MedEmbed Semantic Backstop (Paraphrase Defense)
+        # FAST-PATH CONVERSATIONAL BYPASS FOR TIER 2
+        # Short phrases (<= 3 words) or common conversational / wrap tokens
+        # CANNOT be clinical advice violations; skip semantic embedding comparison.
         # -------------------------------------------------------------
+        if len(tokens) <= 3 or clean_lower in CONVERSATIONAL_TOKENS or any(clean_lower.startswith(t) for t in ["no ", "nope ", "stop ", "hang up", "nothing "]):
+            return {
+                "gate_triggered": False,
+                "action": "ALLOW",
+                "static_weight": 0.30,
+                "dynamic_weight": 0.70
+            }
+
+        # -------------------------------------------------------------
+        # TIER 2: MedEmbed Semantic Backstop (Paraphrase Defense)
+        # Only evaluate if utterance contains potential clinical / regulatory terms.
+        # -------------------------------------------------------------
+        CLINICAL_TRIGGER_KEYWORDS = [
+            "dose", "dosing", "toxicity", "toxicities", "adverse", "ae", "reaction", "reactions",
+            "rash", "diarrhea", "pneumonitis", "infusion", "efficacy", "survival", "curve",
+            "clinical trial", "phase 1", "phase 2", "phase 3", "off-label", "unapproved",
+            "prescribe", "titrat", "reduction", "dose modification", "safety concern"
+        ]
+        text_lower = text_clean.lower()
+        has_clinical_context = any(kw in text_lower for kw in CLINICAL_TRIGGER_KEYWORDS)
+        if not has_clinical_context:
+            return {
+                "gate_triggered": False,
+                "action": "ALLOW",
+                "static_weight": 0.30,
+                "dynamic_weight": 0.70
+            }
+
         excl_tensors = self.frm_hard_exclusion_embeddings if role_upper == "FRM" else self.os_hard_exclusion_embeddings
         excl_meta = self.frm_hard_exclusion_metadata if role_upper == "FRM" else self.os_hard_exclusion_metadata
 
@@ -710,8 +752,6 @@ class KGEmbeddingEngine:
             excl_meta = self.frm_exclusion_metadata if role_upper == "FRM" else self.os_exclusion_metadata
 
         if excl_tensors is not None and len(excl_meta) > 0:
-            # In-scope safeguarding to prevent false positives on legitimate commercial field notes
-            text_lower = text_clean.lower()
             if role_upper == "FRM":
                 in_scope_kw = [
                     "prior auth", "prior authorization", "pa ", "pa turnaround", "appeal", "denial",
@@ -729,8 +769,8 @@ class KGEmbeddingEngine:
                 ]
                 has_in_scope = any(k in text_lower for k in in_scope_kw)
 
-            # In-scope statements require higher threshold (>= 0.72) to trigger semantic backstop
-            eff_threshold = 0.72 if has_in_scope else semantic_threshold
+            # In-scope statements require higher threshold (>= 0.82) to trigger semantic backstop
+            eff_threshold = 0.82 if has_in_scope else max(semantic_threshold, 0.78)
 
             query_vec = self.encode_query(text_clean)
             similarities = torch.mv(excl_tensors, query_vec).cpu().tolist()
@@ -745,7 +785,7 @@ class KGEmbeddingEngine:
             if best_sim >= eff_threshold and best_meta:
                 if role_upper == "FRM":
                     comp_q = (
-                        "Under J&J commercial compliance guidelines, clinical trial efficacy discussions must be routed to "
+                        "Under commercial compliance guidelines, clinical trial efficacy discussions must be routed to "
                         "Medical Affairs. Did you advise the physician that an MSL will follow up via a Medical Information Request (MIR)?"
                     )
                 else:
