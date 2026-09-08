@@ -55,36 +55,15 @@ class AudioTranscriber:
     post-corrects transcripts using S3 phonetic dictionary and Hopfield memory.
     """
 
-    @staticmethod
-    def _resolve_flowedit_url(explicit_url: Optional[str] = None) -> Optional[str]:
-        """Resolve active FlowEdit API endpoint URL (prioritizes port 8004 where FlowEdit runs, then 8000)."""
-        if explicit_url:
-            return explicit_url.rstrip("/")
-        env_url = os.getenv("FLOWEDIT_URL")
-        if env_url:
-            return env_url.rstrip("/")
-
-        import urllib.request
-        for port in [8004, 8000]:
-            cand = f"http://127.0.0.1:{port}"
-            try:
-                with urllib.request.urlopen(f"{cand}/api/spelling?refresh=false", timeout=0.6) as resp:
-                    if resp.status == 200:
-                        logger.info(f"[AudioTranscriber] Connected to active FlowEdit service at {cand}")
-                        return cand
-            except Exception:
-                continue
-        return "http://127.0.0.1:8004"
-
     def __init__(
         self,
         model_size: Optional[str] = None,
         compute_type: Optional[str] = None,
         device: Optional[str] = None,
-        flowedit_url: Optional[str] = None,
     ):
         """
-        Initialize the Whisper transcription engine.
+        Initialize the in-process Whisper transcription engine directly integrated with
+        FlowEdit S3 Spelling Store and Hopfield Associative Memory.
 
         Args:
             model_size: Whisper model size ('tiny', 'base', 'small', 'medium', 'large-v3').
@@ -92,63 +71,23 @@ class AudioTranscriber:
             compute_type: CTranslate2 compute type ('float16', 'int8', 'float32').
                           Defaults to WHISPER_COMPUTE_TYPE env var or auto-detect.
             device: Device to run on ('cuda', 'cpu'). Auto-detected if not specified.
-            flowedit_url: URL to FlowEdit API service (default: probes port 8004 then 8000)
         """
         self.model_size = model_size or os.getenv("WHISPER_MODEL_SIZE", "base")
         self.default_language = os.getenv("WHISPER_LANGUAGE", "en")
         self.device = device
         self.compute_type = compute_type or os.getenv("WHISPER_COMPUTE_TYPE", "")
-        self.flowedit_url = self._resolve_flowedit_url(flowedit_url)
         self._model = None
         self._hopfield_memory = None
         self._last_memory_mtime = 0.0
 
-        # Load Whisper model
+        # Load Whisper model in-process
         try:
             self._load_model()
         except ImportError as e:
             print(f"[AudioTranscriber] NOTE: {e}")
 
-        # Connect FlowEdit Hopfield associative memory
+        # Connect FlowEdit Hopfield associative memory in-process
         self._load_hopfield_memory()
-
-    def _transcribe_flowedit_remote(
-        self,
-        audio_path: str,
-        language: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
-        """Attempt transcription via FlowEdit REST API (/api/transcribe) if running."""
-        if not self.flowedit_url:
-            return None
-        import requests
-        try:
-            url = f"{self.flowedit_url.rstrip('/')}/api/transcribe"
-            with open(audio_path, "rb") as f:
-                files = {"audio": (os.path.basename(audio_path), f, "audio/wav")}
-                data = {"use_memory": "true", "include_timestamps": "true"}
-                if language:
-                    data["language"] = language
-                resp = requests.post(url, files=files, data=data, timeout=25)
-            if resp.status_code == 200:
-                data = resp.json()
-                print(f"[AudioTranscriber] ✓ Transcribed via FlowEdit service ({self.flowedit_url})")
-                return {
-                    "transcript": data.get("text", ""),
-                    "raw_transcript": data.get("raw_text", data.get("text", "")),
-                    "language": data.get("language", "en"),
-                    "language_probability": 0.99,
-                    "confidence": 0.95,
-                    "duration_seconds": data.get("duration", 0.0),
-                    "transcription_latency_ms": 0.0,
-                    "segments": data.get("segments", []),
-                    "s3_corrections": data.get("s3_corrections", []),
-                    "hopfield_corrections": data.get("corrections", []),
-                    "flowedit_memory_applied": data.get("memory_applied", False),
-                    "hopfield_entries_count": data.get("memory_entries_count", 0)
-                }
-        except Exception as e:
-            logger.debug(f"[AudioTranscriber] FlowEdit remote call notice ({e}). Falling back to local pipeline.")
-        return None
 
     def _find_memory_file(self) -> Optional[str]:
         """Find the Hopfield memory corrections.pt file across project locations."""
@@ -280,6 +219,24 @@ class AudioTranscriber:
         audio.export(tmp_path, format="wav")
         return tmp_path
 
+    def get_vocabulary_prompt(self) -> str:
+        """Extract vocabulary biasing prompt from Hopfield Memory and S3 Spelling Store."""
+        prompt_parts = []
+        if self._hopfield_memory and self._hopfield_memory.num_entries > 0:
+            hop_prompt = self._hopfield_memory.get_vocabulary_prompt()
+            if hop_prompt:
+                prompt_parts.append(hop_prompt)
+
+        try:
+            from flowedit.memory.s3_storage import s3_spelling_store
+            s3_prompt = s3_spelling_store.get_vocabulary_prompt()
+            if s3_prompt:
+                prompt_parts.append(s3_prompt)
+        except Exception:
+            pass
+
+        return " ".join(prompt_parts).strip()
+
     def transcribe(
         self,
         audio_path: str,
@@ -325,36 +282,10 @@ class AudioTranscriber:
         if target_lang and str(target_lang).lower() in ("auto", "none", ""):
             target_lang = None
 
-        # 1. Attempt FlowEdit REST Service transcription if accessible
-        if self.flowedit_url:
-            remote_res = self._transcribe_flowedit_remote(converted_path, language=target_lang)
-            if remote_res:
-                if is_temp and os.path.exists(converted_path):
-                    try:
-                        os.unlink(converted_path)
-                    except OSError:
-                        pass
-                return remote_res
-
-        # Reload Hopfield memory if updated on disk (hot-reload from FlowEdit API)
+        # Reload Hopfield memory if updated on disk (in-process hot-reload)
         self._load_hopfield_memory()
 
-        # Extract vocabulary biasing prompt from Hopfield Memory and S3 Spelling Store
-        prompt_parts = []
-        if self._hopfield_memory and self._hopfield_memory.num_entries > 0:
-            hop_prompt = self._hopfield_memory.get_vocabulary_prompt()
-            if hop_prompt:
-                prompt_parts.append(hop_prompt)
-
-        try:
-            from flowedit.memory.s3_storage import s3_spelling_store
-            s3_prompt = s3_spelling_store.get_vocabulary_prompt()
-            if s3_prompt:
-                prompt_parts.append(s3_prompt)
-        except Exception:
-            pass
-
-        initial_prompt = " ".join(prompt_parts).strip() or None
+        initial_prompt = self.get_vocabulary_prompt() or None
         if initial_prompt:
             logger.debug(f"[AudioTranscriber] Biasing Whisper with vocabulary prompt: '{initial_prompt}'")
 

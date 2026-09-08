@@ -13,9 +13,22 @@ Orchestrates the entire conversational workflow:
 """
 
 import os
+import sys
 import re
 import time
 from typing import Dict, Any, Optional
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(CURRENT_DIR))
+FLOWEDIT_DIR = os.path.join(PROJECT_ROOT, "Flowedit")
+if FLOWEDIT_DIR not in sys.path:
+    sys.path.insert(0, FLOWEDIT_DIR)
+
+try:
+    from flowedit.memory.s3_storage import s3_spelling_store
+except ImportError:
+    s3_spelling_store = None
+
 from engine.kg_rule_engine import KGRuleEngine
 from engine.nlu_extractor import NLUExtractor
 from engine.slm_next_question_engine import SLMNextQuestionEngine
@@ -88,7 +101,20 @@ class RuleGovernedCallBot:
         session = self.active_sessions.get(session_id)
         if not session:
             return {"error": f"Session {session_id} not found."}
-            
+
+        # STEP 0: Apply FlowEdit S3 phonetic spelling corrections to incoming utterance
+        s3_applied = []
+        if s3_spelling_store:
+            try:
+                candidate_answer, s3_applied = s3_spelling_store.apply_corrections_to_transcript(candidate_answer)
+            except Exception as e:
+                pass
+
+        def _format_result(res: Dict[str, Any]) -> Dict[str, Any]:
+            if s3_applied:
+                res["s3_corrections"] = s3_applied
+            return res
+
         if session.is_completed:
             latency_ms = round((time.perf_counter() - t_start) * 1000, 1)
             msg = "This call note is already closed."
@@ -102,7 +128,7 @@ class RuleGovernedCallBot:
                 "num_tokens": len(msg.split()),
                 "total_generation_time_ms": latency_ms
             }
-            return {
+            return _format_result({
                 "status": "SESSION_CLOSED",
                 "role": session.role,
                 "bot_message": msg,
@@ -117,7 +143,7 @@ class RuleGovernedCallBot:
                 "latency_formatted": f"{latency_ms:.0f}ms",
                 "metrics": metrics,
                 "session_summary": session.get_summary()
-            }
+            })
             
         # STEP 1: NLU & Entity/Topic Extraction
         nlu_res = self.nlu.analyze_utterance(candidate_answer)
@@ -149,7 +175,7 @@ class RuleGovernedCallBot:
                 "num_tokens": gen_tokens,
                 "total_generation_time_ms": latency_ms
             }
-            return {
+            return _format_result({
                 "status": "OUT_OF_DOMAIN_INTERCEPT",
                 "role": session.role,
                 "current_state": session.current_state,
@@ -165,7 +191,7 @@ class RuleGovernedCallBot:
                 "latency_formatted": f"{latency_ms:.0f}ms",
                 "metrics": metrics,
                 "session_summary": session.get_summary()
-            }
+            })
 
         # STEP 1.8: Global Compliance / PHI Guardrail
         has_phi = False
@@ -197,7 +223,7 @@ class RuleGovernedCallBot:
                 "num_tokens": 0,
                 "total_generation_time_ms": latency_ms
             }
-            return {
+            return _format_result({
                 "status": "COMPLIANCE_VIOLATION",
                 "rule_id": "rule:privacy_phi_pii",
                 "action_type": "REDACT_AND_WARN",
@@ -214,7 +240,7 @@ class RuleGovernedCallBot:
                 "latency_formatted": f"{latency_ms:.0f}ms",
                 "metrics": metrics,
                 "session_summary": session.get_summary()
-            }
+            })
 
         # STEP 1.9: Role Scope & Regulatory Exclusion Check (Grounded in Knowledge Graph)
         scope_res = self.kg.evaluate_role_scope(session.role, detected_topics, candidate_answer)
@@ -256,7 +282,7 @@ class RuleGovernedCallBot:
                 "num_tokens": gen_tokens,
                 "total_generation_time_ms": latency_ms
             }
-            return {
+            return _format_result({
                 "status": "SCOPE_VIOLATION_INTERCEPT",
                 "role": session.role,
                 "rule_id": rule_id,
@@ -274,7 +300,7 @@ class RuleGovernedCallBot:
                 "latency_formatted": f"{latency_ms:.0f}ms",
                 "metrics": metrics,
                 "session_summary": session.get_summary()
-            }
+            })
 
         # STEP 2: Explicit Session End Check (Greeting Refusal, User Close Request, or Wrap-up Confirmation)
         ans_clean = candidate_answer.strip()
@@ -301,7 +327,7 @@ class RuleGovernedCallBot:
                 "num_tokens": gen_tokens,
                 "total_generation_time_ms": latency_ms
             }
-            return {
+            return _format_result({
                 "status": "SESSION_CLOSED",
                 "role": session.role,
                 "current_state": "COMPLETED",
@@ -317,7 +343,7 @@ class RuleGovernedCallBot:
                 "latency_formatted": f"{latency_ms:.0f}ms",
                 "metrics": metrics,
                 "session_summary": session.get_summary()
-            }
+            })
 
         # STEP 3: Predict Next Question using Dynamic KG-Conditioned Generative SLM
         curr_q = session.current_question
@@ -413,7 +439,7 @@ class RuleGovernedCallBot:
         gen_tokens = metrics.get("generated_tokens", len(next_q.split()))
         tokens_per_sec = metrics.get("tokens_per_second", 72.0)
 
-        return {
+        return _format_result({
             "status": "SUCCESS",
             "role": session.role,
             "current_state": curr_state,
@@ -444,7 +470,7 @@ class RuleGovernedCallBot:
             "num_tokens": gen_tokens,
             "total_generation_time_ms": latency_ms,
             "session_summary": session.get_summary()
-        }
+        })
 
     def process_turn_stream(self, session_id: str, candidate_answer: str):
         """
@@ -461,6 +487,22 @@ class RuleGovernedCallBot:
             yield {"type": "error", "error": f"Session {session_id} not found."}
             return
 
+        # STEP 0: Apply FlowEdit S3 phonetic spelling corrections to incoming utterance
+        s3_applied = []
+        if s3_spelling_store:
+            try:
+                candidate_answer, s3_applied = s3_spelling_store.apply_corrections_to_transcript(candidate_answer)
+            except Exception as e:
+                pass
+
+        if s3_applied:
+            yield {"type": "s3_correction", "s3_corrections": s3_applied}
+
+        def _format_stream_result(res_dict: Dict[str, Any]) -> Dict[str, Any]:
+            if s3_applied:
+                res_dict["s3_corrections"] = s3_applied
+            return res_dict
+
         if session.is_completed:
             latency_ms = round((time.perf_counter() - t_start) * 1000, 2)
             msg = "This call note is already closed."
@@ -473,7 +515,7 @@ class RuleGovernedCallBot:
                 "total_generation_time_ms": latency_ms
             }
             yield metrics
-            yield {
+            yield _format_stream_result({
                 "type": "result",
                 "status": "SESSION_CLOSED",
                 "bot_message": msg,
@@ -481,7 +523,7 @@ class RuleGovernedCallBot:
                 "latency_ms": latency_ms,
                 "latency_formatted": f"{latency_ms:.0f}ms",
                 "session_summary": session.get_summary()
-            }
+            })
             return
 
         # STEP 1: NLU & Entity/Topic Extraction
@@ -511,7 +553,7 @@ class RuleGovernedCallBot:
                 "total_generation_time_ms": latency_ms
             }
             yield metrics
-            yield {
+            yield _format_stream_result({
                 "type": "result",
                 "status": "OUT_OF_DOMAIN_INTERCEPT",
                 "role": session.role,
@@ -528,7 +570,7 @@ class RuleGovernedCallBot:
                 "tokens_per_second": 0.0,
                 "latency_formatted": f"{latency_ms:.0f}ms",
                 "session_summary": session.get_summary()
-            }
+            })
             return
 
         # STEP 1.8: Global Compliance / PHI Guardrail
@@ -564,7 +606,7 @@ class RuleGovernedCallBot:
                 "total_generation_time_ms": latency_ms
             }
             yield metrics
-            yield {
+            yield _format_stream_result({
                 "type": "result",
                 "status": "COMPLIANCE_VIOLATION",
                 "rule_id": "rule:privacy_phi_pii",
@@ -582,7 +624,7 @@ class RuleGovernedCallBot:
                 "tokens_per_second": 0.0,
                 "latency_formatted": f"{latency_ms:.0f}ms",
                 "session_summary": session.get_summary()
-            }
+            })
             return
 
         # STEP 1.9: Role Scope & Regulatory Exclusion Check (Grounded in Knowledge Graph)
@@ -627,7 +669,7 @@ class RuleGovernedCallBot:
                 "total_generation_time_ms": latency_ms
             }
             yield metrics
-            yield {
+            yield _format_stream_result({
                 "type": "result",
                 "status": "SCOPE_VIOLATION_INTERCEPT",
                 "role": session.role,
@@ -646,7 +688,7 @@ class RuleGovernedCallBot:
                 "tokens_per_second": 0.0,
                 "latency_formatted": f"{latency_ms:.0f}ms",
                 "session_summary": session.get_summary()
-            }
+            })
             return
 
         # STEP 2: Explicit Session End Check (Greeting Refusal, User Close Request, or Wrap-up Confirmation)
@@ -676,7 +718,7 @@ class RuleGovernedCallBot:
                 "total_generation_time_ms": latency_ms
             }
             yield metrics
-            yield {
+            yield _format_stream_result({
                 "type": "result",
                 "status": "SESSION_CLOSED",
                 "role": session.role,
@@ -693,7 +735,7 @@ class RuleGovernedCallBot:
                 "num_tokens": len(msg.split()) if msg else 0,
                 "tokens_per_second": 0.0,
                 "latency_formatted": f"{latency_ms:.0f}ms"
-            }
+            })
             return
 
         # STEP 5: Generate stream from SLM
@@ -755,7 +797,7 @@ class RuleGovernedCallBot:
         gen_tokens = metrics_obj.get("generated_tokens", len(next_q.split())) if metrics_obj else len(next_q.split())
         tokens_per_sec = metrics_obj.get("tokens_per_second", 72.0) if metrics_obj else 72.0
 
-        yield {
+        yield _format_stream_result({
             "type": "result",
             "status": "SUCCESS",
             "role": session.role,
@@ -786,4 +828,4 @@ class RuleGovernedCallBot:
             "num_tokens": gen_tokens,
             "total_generation_time_ms": latency_ms,
             "session_summary": session.get_summary()
-        }
+        })

@@ -221,38 +221,16 @@ class AudioSynthesizer:
     Default voice is 'michael' using zero-shot speaker conditioning on michael.wav.
     """
 
-    @staticmethod
-    def _resolve_flowedit_url(explicit_url: Optional[str] = None) -> Optional[str]:
-        """Resolve active FlowEdit API endpoint URL (prioritizes port 8004 where FlowEdit runs, then 8000)."""
-        if explicit_url:
-            return explicit_url.rstrip("/")
-        env_url = os.getenv("FLOWEDIT_URL")
-        if env_url:
-            return env_url.rstrip("/")
-
-        import urllib.request
-        for port in [8004, 8000]:
-            cand = f"http://127.0.0.1:{port}"
-            try:
-                with urllib.request.urlopen(f"{cand}/api/spelling?refresh=false", timeout=0.6) as resp:
-                    if resp.status == 200:
-                        logger.info(f"[AudioSynthesizer] Connected to active FlowEdit service at {cand}")
-                        return cand
-            except Exception:
-                continue
-        return "http://127.0.0.1:8004"
-
     def __init__(
         self,
         default_voice: str = "michael",
-        flowedit_url: Optional[str] = None
     ):
         self.default_voice = os.getenv("DEFAULT_TTS_VOICE", default_voice)
-        self.flowedit_url = self._resolve_flowedit_url(flowedit_url)
         self.flowedit_inference = None
         self._flowedit_ready = False
         self._phonetic_normalizer = None
         self._last_memory_mtime = 0.0
+        self._last_s3_applied = []
 
         # Voice mapping with dynamic resolution
         self.preset_voices = {
@@ -394,6 +372,7 @@ class AudioSynthesizer:
                 pass
 
         # Apply S3 Phonetic Spelling Store corrections for TTS (e.g. mihir -> myhyr)
+        s3_applied = []
         try:
             from flowedit.memory.s3_storage import s3_spelling_store
             normalized, s3_applied = s3_spelling_store.apply_corrections_to_text(normalized)
@@ -402,6 +381,8 @@ class AudioSynthesizer:
         except Exception as e:
             logger.debug(f"[AudioSynthesizer] S3 normalization notice: {e}")
 
+        if s3_applied:
+            self._last_s3_applied = s3_applied
         return normalized
 
     def _get_speaker_wav(self, voice: str) -> Optional[str]:
@@ -442,8 +423,8 @@ class AudioSynthesizer:
         voice_info = self.preset_voices.get(voice_name.lower(), self.preset_voices["michael"])
         neural_voice = voice_info["neural_fallback"]
 
-        # Pronunciation normalized carrier
-        carrier_text = self._normalize_text(text)
+        # Text passed in is already normalized with FlowEdit phonetic and S3 spelling rules
+        carrier_text = text
 
         communicate = edge_tts.Communicate(carrier_text, neural_voice, rate=rate)
         chunks = []
@@ -482,35 +463,6 @@ class AudioSynthesizer:
                 except OSError:
                     pass
 
-    def _synthesize_flowedit_remote(
-        self,
-        text: str,
-        voice: str = "michael"
-    ) -> Optional[Tuple[bytes, str]]:
-        """Synthesize via remote FlowEdit API endpoint if configured."""
-        if not self.flowedit_url:
-            return None
-
-        import requests
-        try:
-            speaker_wav = self._get_speaker_wav(voice)
-            endpoint = f"{self.flowedit_url.rstrip('/')}/api/synthesize"
-            data = {"text": text, "speaker_name": voice}
-            files = {}
-            if speaker_wav and os.path.exists(speaker_wav):
-                files["speaker_wav"] = open(speaker_wav, "rb")
-
-            resp = requests.post(endpoint, data=data, files=files if files else None, timeout=30)
-            if files:
-                files["speaker_wav"].close()
-
-            if resp.status_code == 200:
-                content_type = resp.headers.get("content-type", "audio/wav").split(";")[0]
-                return resp.content, content_type
-        except Exception as e:
-            logger.warning(f"FlowEdit remote endpoint call failed: {e}")
-        return None
-
     def synthesize(
         self,
         text: str,
@@ -518,7 +470,7 @@ class AudioSynthesizer:
         rate: str = "+0%"
     ) -> Dict[str, Any]:
         """
-        Synchronously synthesize text to audio with default voice 'michael'.
+        Synchronously synthesize text to audio with default voice 'michael' directly in-process.
 
         Returns:
             Dict containing:
@@ -529,10 +481,14 @@ class AudioSynthesizer:
                 - tts_latency_ms (float)
                 - engine (str)
                 - voice (str)
+                - s3_applied (list)
+                - hopfield_active (bool)
         """
         t0 = time.perf_counter()
         # ALWAYS apply FlowEdit phonetic corrections and oncology normalization before synthesis
+        self._last_s3_applied = []
         normalized_text = self._normalize_text(text)
+        current_s3_applied = list(self._last_s3_applied)
         target_voice = voice or self.default_voice
         speaker_wav = self._get_speaker_wav(target_voice)
 
@@ -540,22 +496,15 @@ class AudioSynthesizer:
         audio_format = "audio/mp3"
         engine_used = "FlowEdit Neural Engine (Michael)"
 
-        # 1. Try local FlowEdit model if loaded
+        # 1. Try in-process FlowEdit model if loaded (XTTS-v2 / F5-TTS + Hopfield Memory)
         if self._flowedit_ready and self.flowedit_inference:
             try:
                 audio_bytes, audio_format = self._synthesize_flowedit_local(normalized_text, target_voice)
-                engine_used = "FlowEdit (Local XTTS/F5-TTS + Hopfield Memory)"
+                engine_used = "FlowEdit (In-Process XTTS/F5-TTS + Hopfield Memory)"
             except Exception as e:
-                logger.warning(f"Local FlowEdit synthesis failed: {e}. Falling back to neural.")
+                logger.warning(f"In-process FlowEdit synthesis failed: {e}. Falling back to neural.")
 
-        # 2. Try remote FlowEdit server if configured
-        if audio_bytes is None and self.flowedit_url:
-            remote_res = self._synthesize_flowedit_remote(normalized_text, target_voice)
-            if remote_res:
-                audio_bytes, audio_format = remote_res
-                engine_used = f"FlowEdit (Remote Server {self.flowedit_url})"
-
-        # 3. High-fidelity neural speech synthesis (Default voice: Michael)
+        # 2. High-fidelity neural speech synthesis (Default voice: Michael)
         if audio_bytes is None and not getattr(self, "_edge_tts_blocked", False):
             try:
                 # Run async edge_tts in event loop or thread with 3.5s timeout
@@ -580,14 +529,14 @@ class AudioSynthesizer:
                 logger.warning(f"Neural TTS WebSocket connection failed ({e}). Flagging edge-tts as blocked.")
                 self._edge_tts_blocked = True
 
-        # 4. HTTPS Firewall-Resilient Speech Fallback (Standard HTTPS port 443)
+        # 3. HTTPS Firewall-Resilient Speech Fallback (Standard HTTPS port 443)
         if audio_bytes is None:
             https_res = self._synthesize_https_tts(normalized_text)
             if https_res:
                 audio_bytes, audio_format = https_res
                 engine_used = f"FlowEdit HTTPS Voice ({target_voice.capitalize()})"
 
-        # 5. Emergency synthetic WAV fallback (espeak/pyttsx3/silent)
+        # 4. Emergency synthetic WAV fallback (espeak/pyttsx3/silent)
         if audio_bytes is None:
             audio_bytes, audio_format = self._generate_fallback_audio(normalized_text)
             engine_used = "Synthetic Audio Fallback"
@@ -599,6 +548,13 @@ class AudioSynthesizer:
 
         b64_audio = base64.b64encode(audio_bytes).decode("ascii")
 
+        hopfield_active = bool(
+            self._flowedit_ready
+            and self.flowedit_inference
+            and getattr(self.flowedit_inference, "memory", None)
+            and self.flowedit_inference.memory.num_entries > 0
+        )
+
         return {
             "audio_bytes": audio_bytes,
             "audio_base64": b64_audio,
@@ -607,7 +563,10 @@ class AudioSynthesizer:
             "tts_latency_ms": latency_ms,
             "engine": engine_used,
             "voice": target_voice,
-            "speaker_wav": speaker_wav
+            "speaker_wav": speaker_wav,
+            "s3_applied": current_s3_applied,
+            "hopfield_active": hopfield_active,
+            "normalized_text": normalized_text
         }
 
     def _synthesize_https_tts(self, text: str) -> Optional[Tuple[bytes, str]]:
@@ -617,7 +576,8 @@ class AudioSynthesizer:
         """
         import urllib.request
         import urllib.parse
-        carrier = self._normalize_text(text)
+        # Text passed in is already normalized with FlowEdit phonetic and S3 spelling rules
+        carrier = text
         encoded = urllib.parse.quote(carrier[:250])
         url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={encoded}&tl=en&client=tw-ob"
         req = urllib.request.Request(
@@ -641,42 +601,7 @@ class AudioSynthesizer:
         voice: Optional[str] = None,
         rate: str = "+0%"
     ) -> Dict[str, Any]:
-        """Asynchronous synthesis for FastAPI async endpoints."""
-        t0 = time.perf_counter()
-        target_voice = voice or self.default_voice
-        speaker_wav = self._get_speaker_wav(target_voice)
-
-        # 1. If local FlowEdit model or remote server is available, run synthesize() in worker thread
-        if (self._flowedit_ready and self.flowedit_inference) or self.flowedit_url:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, self.synthesize, text, voice, rate)
-
-        # 2. Try Edge-TTS if not blocked by firewall
-        if not getattr(self, "_edge_tts_blocked", False):
-            try:
-                audio_bytes, audio_format = await asyncio.wait_for(
-                    self._synthesize_edge_tts(text, target_voice, rate),
-                    timeout=3.5
-                )
-                engine_used = f"FlowEdit Neural Voice ({target_voice.capitalize()})"
-                latency_ms = round((time.perf_counter() - t0) * 1000, 1)
-                duration = max(0.5, round(len(audio_bytes) / 24000.0, 2))
-                b64_audio = base64.b64encode(audio_bytes).decode("ascii")
-                return {
-                    "audio_bytes": audio_bytes,
-                    "audio_base64": b64_audio,
-                    "audio_format": audio_format,
-                    "duration_seconds": duration,
-                    "tts_latency_ms": latency_ms,
-                    "engine": engine_used,
-                    "voice": target_voice,
-                    "speaker_wav": speaker_wav
-                }
-            except Exception as e:
-                logger.warning(f"Async edge_tts timed out / blocked by firewall ({e}). Marking edge-tts as blocked.")
-                self._edge_tts_blocked = True
-
-        # 3. Fall back to thread-safe synchronous synthesizer (HTTPS TTS / local FlowEdit / espeak)
+        """Asynchronous synthesis executing in-process via thread executor."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.synthesize, text, voice, rate)
 

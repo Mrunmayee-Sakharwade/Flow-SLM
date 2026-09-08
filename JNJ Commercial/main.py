@@ -18,6 +18,7 @@ Endpoints:
 """
 
 import os
+import sys
 import json
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
@@ -25,6 +26,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
+
+# Ensure Flowedit is in sys.path
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
+FLOWEDIT_DIR = os.path.join(PROJECT_ROOT, "Flowedit")
+if FLOWEDIT_DIR not in sys.path:
+    sys.path.insert(0, FLOWEDIT_DIR)
+
+try:
+    from flowedit.memory.s3_storage import s3_spelling_store
+except ImportError:
+    s3_spelling_store = None
 
 from engine.chatbot_pipeline import RuleGovernedCallBot
 from engine.audio_transcriber import AudioTranscriber
@@ -243,11 +256,19 @@ class TurnResponse(BaseModel):
         default=None,
         description="Live materialized Entity-Relationship Knowledge Graph nodes and edges"
     )
+    s3_corrections: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="S3 phonetic spelling corrections applied to the utterance"
+    )
 
 class AudioTranscribeResponse(BaseModel):
     """Response schema for standalone audio transcription."""
     transcript: str = Field(
         description="Full transcribed text from the audio input"
+    )
+    raw_transcript: Optional[str] = Field(
+        default=None,
+        description="Raw transcribed text before phonetic post-corrections"
     )
     language: str = Field(
         description="Detected language code (e.g. 'en')"
@@ -264,12 +285,32 @@ class AudioTranscribeResponse(BaseModel):
     transcription_latency_ms: float = Field(
         description="Whisper transcription processing time in milliseconds"
     )
+    s3_corrections: Optional[List[Dict[str, Any]]] = Field(
+        default=[],
+        description="Phonetic corrections applied via FlowEdit S3 Spelling Store"
+    )
+    hopfield_corrections: Optional[List[Dict[str, Any]]] = Field(
+        default=[],
+        description="Acoustic corrections applied via FlowEdit Hopfield Associative Memory"
+    )
+    flowedit_memory_applied: Optional[bool] = Field(
+        default=False,
+        description="Whether FlowEdit memory corrections (S3 or Hopfield) were applied"
+    )
+    hopfield_entries_count: Optional[int] = Field(
+        default=0,
+        description="Number of active patterns in Hopfield Associative Memory"
+    )
 
 class AudioTurnResponse(TurnResponse):
     """Response schema for the combined full audio → SLM → audio pipeline."""
     transcript: Optional[str] = Field(
         default=None,
         description="Whisper-transcribed text from the uploaded audio"
+    )
+    raw_transcript: Optional[str] = Field(
+        default=None,
+        description="Raw transcribed text before phonetic post-corrections"
     )
     transcription_latency_ms: Optional[float] = Field(
         default=None,
@@ -286,6 +327,18 @@ class AudioTurnResponse(TurnResponse):
     transcription_confidence: Optional[float] = Field(
         default=None,
         description="Whisper transcription confidence score"
+    )
+    s3_corrections: Optional[List[Dict[str, Any]]] = Field(
+        default=[],
+        description="S3 phonetic corrections applied to incoming speech transcript"
+    )
+    hopfield_corrections: Optional[List[Dict[str, Any]]] = Field(
+        default=[],
+        description="Hopfield memory corrections applied to incoming speech transcript"
+    )
+    flowedit_memory_applied: Optional[bool] = Field(
+        default=False,
+        description="Whether FlowEdit memory was applied to the transcript"
     )
     bot_audio_base64: Optional[str] = Field(
         default=None,
@@ -310,6 +363,14 @@ class AudioTurnResponse(TurnResponse):
     voice: Optional[str] = Field(
         default="michael",
         description="Voice persona used for synthesizing the bot response (Default: michael)"
+    )
+    tts_s3_applied: Optional[List[Dict[str, Any]]] = Field(
+        default=[],
+        description="S3 phonetic respellings applied to outbound text before TTS synthesis"
+    )
+    tts_normalized_text: Optional[str] = Field(
+        default=None,
+        description="Phonetically respelled text sent to TTS engine"
     )
 
 class SynthesizeRequest(BaseModel):
@@ -540,11 +601,16 @@ async def transcribe_audio(
         )
         return {
             "transcript": result["transcript"],
+            "raw_transcript": result.get("raw_transcript", result["transcript"]),
             "language": result["language"],
             "language_probability": result["language_probability"],
             "confidence": result["confidence"],
             "duration_seconds": result["duration_seconds"],
-            "transcription_latency_ms": result["transcription_latency_ms"]
+            "transcription_latency_ms": result["transcription_latency_ms"],
+            "s3_corrections": result.get("s3_corrections", []),
+            "hopfield_corrections": result.get("hopfield_corrections", []),
+            "flowedit_memory_applied": result.get("flowedit_memory_applied", False),
+            "hopfield_entries_count": result.get("hopfield_entries_count", 0),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
@@ -609,26 +675,31 @@ async def process_audio_turn(
     bot_audio_b64 = None
     bot_audio_fmt = "audio/mp3"
     audio_duration = None
+    synth_res = None
 
     if bot_message:
         try:
             synth_res = await audio_synthesizer.synthesize_async(bot_message, voice=target_voice)
-            bot_audio_b64 = synth_res["audio_base64"]
-            bot_audio_fmt = synth_res["audio_format"]
-            audio_duration = synth_res["duration_seconds"]
-            tts_latency = synth_res["tts_latency_ms"]
+            bot_audio_b64 = synth_res.get("audio_base64")
+            bot_audio_fmt = synth_res.get("audio_format", "audio/mp3")
+            audio_duration = synth_res.get("duration_seconds")
+            tts_latency = synth_res.get("tts_latency_ms", 0.0)
         except Exception as e:
-            logger.warning(f"Speech synthesis error: {e}")
+            print(f"[process_audio_turn] Speech synthesis error: {e}")
 
     stt_latency = stt_result.get("transcription_latency_ms", 0.0)
     slm_latency = result.get("latency_ms", 0.0)
 
     # Enrich response with transcription and speech synthesis metadata
     result["transcript"] = transcript
+    result["raw_transcript"] = stt_result.get("raw_transcript", transcript)
     result["transcription_latency_ms"] = stt_latency
     result["audio_duration_seconds"] = stt_result.get("duration_seconds", 0.0)
     result["transcription_language"] = stt_result.get("language")
     result["transcription_confidence"] = stt_result.get("confidence")
+    result["s3_corrections"] = stt_result.get("s3_corrections", [])
+    result["hopfield_corrections"] = stt_result.get("hopfield_corrections", [])
+    result["flowedit_memory_applied"] = stt_result.get("flowedit_memory_applied", False)
 
     result["bot_audio_base64"] = bot_audio_b64
     result["bot_audio_format"] = bot_audio_fmt
@@ -636,6 +707,8 @@ async def process_audio_turn(
     result["tts_latency_ms"] = tts_latency
     result["total_turn_latency_ms"] = round(stt_latency + slm_latency + tts_latency, 1)
     result["voice"] = target_voice
+    result["tts_s3_applied"] = synth_res.get("s3_applied", []) if synth_res else []
+    result["tts_normalized_text"] = synth_res.get("normalized_text", bot_message) if synth_res else bot_message
 
     return result
 
@@ -689,7 +762,7 @@ async def process_audio_turn_stream(
     # Step 2: Stream SLM response followed by synthesized speech event
     def audio_event_generator():
         # First event: transcription result
-        yield f"data: {json.dumps({'type': 'transcription', 'transcript': transcript, 'transcription_latency_ms': stt_result['transcription_latency_ms'], 'audio_duration_seconds': stt_result['duration_seconds'], 'language': stt_result['language'], 'confidence': stt_result['confidence']})}\n\n"
+        yield f"data: {json.dumps({'type': 'transcription', 'transcript': transcript, 'raw_transcript': stt_result.get('raw_transcript', transcript), 'transcription_latency_ms': stt_result['transcription_latency_ms'], 'audio_duration_seconds': stt_result['duration_seconds'], 'language': stt_result['language'], 'confidence': stt_result['confidence'], 's3_corrections': stt_result.get('s3_corrections', []), 'hopfield_corrections': stt_result.get('hopfield_corrections', []), 'flowedit_memory_applied': stt_result.get('flowedit_memory_applied', False)})}\n\n"
 
         final_bot_message = ""
         # Stream SLM turn processing
@@ -710,7 +783,9 @@ async def process_audio_turn_stream(
                     "audio_format": synth_res["audio_format"],
                     "duration_seconds": synth_res["duration_seconds"],
                     "tts_latency_ms": synth_res["tts_latency_ms"],
-                    "voice": synth_res["voice"]
+                    "voice": synth_res["voice"],
+                    "s3_applied": synth_res.get("s3_applied", []),
+                    "normalized_text": synth_res.get("normalized_text", final_bot_message)
                 }
                 yield f"data: {json.dumps(audio_payload)}\n\n"
             except Exception as e:
@@ -742,6 +817,9 @@ async def synthesize_speech(req: SynthesizeRequest):
 
     return {
         "text": req.text,
+        "normalized_text": synth_res.get("normalized_text", req.text),
+        "s3_applied": synth_res.get("s3_applied", []),
+        "hopfield_active": synth_res.get("hopfield_active", False),
         "voice": synth_res["voice"],
         "engine": synth_res["engine"],
         "audio_format": synth_res["audio_format"],

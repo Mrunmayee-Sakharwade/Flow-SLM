@@ -60,9 +60,11 @@ class S3SpellingStore:
         self._dictionary: Dict[str, Dict[str, Any]] = {}
         self.resolver = HomographContextResolver()
         self._s3_client = None
+        self._last_cache_mtime = 0.0
 
-        # Attempt to load existing dictionary if S3 is configured
-        if self.bucket_name:
+        # Attempt to load existing dictionary from local cache and/or S3
+        self._load_local_cache()
+        if self.bucket_name and not self._dictionary:
             try:
                 self.load_from_s3()
             except Exception as e:
@@ -231,50 +233,53 @@ class S3SpellingStore:
     def _get_local_cache_paths(self) -> List[str]:
         """Candidate local disk paths to cache and persist spelling dictionary."""
         cands = [
+            # Direct workspace root and sibling folder candidates
+            os.path.abspath("spelling_dictionary.json"),
+            os.path.abspath("../spelling_dictionary.json"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "spelling_dictionary.json"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "spelling_dictionary.json"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "JNJ Commercial", "spelling_dictionary.json"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "spelling_dictionary.json"),
+            # Linux server paths
             "/home/rsurya/projects/flow_edit/spelling_dictionary.json",
             "/home/rsurya/projects/flow_edit/Flowedit/spelling_dictionary.json",
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "spelling_dictionary.json"),
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "spelling_dictionary.json"),
-            os.path.abspath("spelling_dictionary.json"),
+            "/home/rsurya/projects/Flow-SLM/spelling_dictionary.json",
+            "/home/rsurya/projects/Flow-SLM/Flowedit/spelling_dictionary.json",
         ]
         return [os.path.abspath(p) for p in cands]
 
-    def _save_local_cache(self) -> bool:
-        """Save in-memory dictionary to local cache files for cross-process synchronization."""
-        if not self._dictionary:
-            return False
-        payload = {
-            "version": "1.0",
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "total_words": len(self._dictionary),
-            "words": self._dictionary,
-        }
-        content = json.dumps(payload, indent=2)
-        saved = False
-        for p in self._get_local_cache_paths():
-            try:
-                os.makedirs(os.path.dirname(p), exist_ok=True)
-                with open(p, "w", encoding="utf-8") as f:
-                    f.write(content)
-                saved = True
-            except Exception:
-                continue
-        return saved
-
     def _load_local_cache(self) -> bool:
         """Load dictionary from local disk cache if available."""
+        loaded_any = False
+        max_mtime = self._last_cache_mtime
         for p in self._get_local_cache_paths():
             if os.path.isfile(p) and os.path.getsize(p) > 10:
                 try:
+                    mtime = os.path.getmtime(p)
+                    max_mtime = max(max_mtime, mtime)
                     with open(p, "r", encoding="utf-8") as f:
                         data = json.load(f)
                     words = data.get("words", {})
                     if isinstance(words, dict) and words:
                         self._dictionary.update(words)
                         logger.info(f"[S3 Store] Loaded {len(words)} corrections from local cache ({p})")
-                        return True
+                        loaded_any = True
                 except Exception as e:
                     logger.debug(f"Failed to load cache {p}: {e}")
+        if loaded_any:
+            self._last_cache_mtime = max_mtime
+            return True
+        return False
+
+    def _check_cache_updated(self) -> bool:
+        """Check if any local cache file has been modified since last load."""
+        for p in self._get_local_cache_paths():
+            if os.path.isfile(p) and os.path.getsize(p) > 10:
+                try:
+                    if os.path.getmtime(p) > self._last_cache_mtime:
+                        return True
+                except OSError:
+                    pass
         return False
 
     def _fetch_from_flowedit_api(self) -> bool:
@@ -300,18 +305,22 @@ class S3SpellingStore:
         return False
 
     def _ensure_loaded(self) -> None:
-        """Ensure dictionary is loaded from S3 bucket, local cache, or active FlowEdit API."""
+        """Ensure dictionary is loaded from local cache, S3 bucket, or active FlowEdit API with auto hot-reload."""
+        # Check if local cache on disk was modified by FlowEdit or user
+        if self._check_cache_updated():
+            logger.info("[S3 Store] Detected updated spelling dictionary on disk. Hot-reloading...")
+            self._load_local_cache()
+
         if not self._dictionary:
-            # 1. Try S3 bucket if configured
-            if self.bucket_name:
+            # 1. Try local disk cache file
+            self._load_local_cache()
+
+            # 2. Try S3 bucket if configured
+            if not self._dictionary and self.bucket_name:
                 try:
                     self.load_from_s3()
                 except Exception as e:
                     logger.debug(f"[S3 Store] On-demand S3 load check notice: {e}")
-
-            # 2. Try local disk cache file
-            if not self._dictionary:
-                self._load_local_cache()
 
             # 3. Try live FlowEdit service (e.g. port 8004 or 8000)
             if not self._dictionary:

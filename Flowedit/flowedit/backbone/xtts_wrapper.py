@@ -35,6 +35,73 @@ from flowedit.backbone.base import TTSBackbone
 logger = logging.getLogger(__name__)
 
 
+def _install_safe_audio_loader():
+    """Ensure torchaudio and TTS load_audio do not crash when torchcodec/ffmpeg is missing."""
+    try:
+        import torchaudio
+        _orig_load = getattr(torchaudio, "load", None)
+
+        def _safe_load(filepath, *args, **kwargs):
+            # Try standard torchaudio.load first
+            if _orig_load is not None:
+                try:
+                    return _orig_load(filepath, *args, **kwargs)
+                except Exception as e:
+                    logger.debug(f"[XTTS] torchaudio.load standard path notice ({e}); using soundfile/wave fallback...")
+
+            # 1. Soundfile fallback
+            try:
+                import soundfile as _sf
+                data, sr = _sf.read(str(filepath), dtype="float32")
+                t = torch.from_numpy(data)
+                if t.ndim == 1:
+                    t = t.unsqueeze(0)
+                elif t.ndim == 2:
+                    t = t.t()
+                return t, sr
+            except Exception:
+                pass
+
+            # 2. Wave fallback
+            import wave
+            with wave.open(str(filepath), "rb") as wf:
+                sr = wf.getframerate()
+                n_ch = wf.getnchannels()
+                sw = wf.getsampwidth()
+                raw = wf.readframes(wf.getnframes())
+                if sw == 2:
+                    arr = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32767.0
+                elif sw == 4:
+                    arr = np.frombuffer(raw, dtype=np.int32).astype(np.float32) / 2147483647.0
+                else:
+                    arr = np.frombuffer(raw, dtype=np.uint8).astype(np.float32) / 128.0 - 1.0
+                if n_ch > 1:
+                    arr = arr.reshape(-1, n_ch).T
+                else:
+                    arr = arr.reshape(1, -1)
+                return torch.from_numpy(arr), sr
+
+        torchaudio.load = _safe_load
+
+        # Also patch TTS's load_audio if xtts model is loaded
+        try:
+            import TTS.tts.models.xtts as _xtts_mod
+            if hasattr(_xtts_mod, "load_audio"):
+                def _safe_xtts_load_audio(audiopath, max_len=None):
+                    t, _ = _safe_load(audiopath)
+                    if max_len is not None and t.shape[-1] > max_len:
+                        t = t[..., :max_len]
+                    return t
+                _xtts_mod.load_audio = _safe_xtts_load_audio
+        except Exception:
+            pass
+    except Exception as exc:
+        logger.debug(f"[XTTS] Notice installing safe audio loader: {exc}")
+
+
+_install_safe_audio_loader()
+
+
 class XTTSBackbone(TTSBackbone):
     """
     XTTS-v2 backbone wrapper supporting fine-tuned model checkpoints.
