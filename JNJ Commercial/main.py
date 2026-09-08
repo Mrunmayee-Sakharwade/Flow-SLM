@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 
 from engine.chatbot_pipeline import RuleGovernedCallBot
 from engine.audio_transcriber import AudioTranscriber
+from engine.audio_synthesizer import AudioSynthesizer
 
 # Initialize FastAPI App with AnQ Bot Metadata
 app = FastAPI(
@@ -65,6 +66,11 @@ MAX_AUDIO_UPLOAD_MB = int(os.getenv("MAX_AUDIO_UPLOAD_MB", "25"))
 print("Initializing Audio Transcriber (Whisper STT)...")
 audio_transcriber = AudioTranscriber()
 
+# Initialize Audio Synthesis Engine (FlowEdit TTS, Default: Michael)
+DEFAULT_TTS_VOICE = os.getenv("DEFAULT_TTS_VOICE", "michael")
+print(f"Initializing Audio Synthesizer (FlowEdit TTS, default voice: {DEFAULT_TTS_VOICE})...")
+audio_synthesizer = AudioSynthesizer(default_voice=DEFAULT_TTS_VOICE)
+
 WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 
 # ---------------------------------------------------------------------------
@@ -91,6 +97,10 @@ class NewSessionRequest(BaseModel):
         description="Pre-selected target healthcare account",
         examples=["Apollo Hospitals"]
     )
+    generate_audio: Optional[bool] = Field(
+        default=True,
+        description="Synthesize initial greeting question as audio (Default voice: Michael)"
+    )
 
 class SessionResponse(BaseModel):
     session_id: str
@@ -101,6 +111,14 @@ class SessionResponse(BaseModel):
     initial_question: str
     current_state: str
     summary: Dict[str, Any]
+    initial_audio_base64: Optional[str] = Field(
+        default=None,
+        description="Synthesized audio speech of the initial greeting question (Michael voice)"
+    )
+    initial_audio_format: Optional[str] = Field(
+        default="audio/mp3",
+        description="Audio format / MIME type of the initial question"
+    )
 
 class TurnRequest(BaseModel):
     session_id: str = Field(
@@ -248,7 +266,7 @@ class AudioTranscribeResponse(BaseModel):
     )
 
 class AudioTurnResponse(TurnResponse):
-    """Response schema for the combined audio → SLM pipeline."""
+    """Response schema for the combined full audio → SLM → audio pipeline."""
     transcript: Optional[str] = Field(
         default=None,
         description="Whisper-transcribed text from the uploaded audio"
@@ -268,6 +286,45 @@ class AudioTurnResponse(TurnResponse):
     transcription_confidence: Optional[float] = Field(
         default=None,
         description="Whisper transcription confidence score"
+    )
+    bot_audio_base64: Optional[str] = Field(
+        default=None,
+        description="Base64-encoded audio waveform of the predicted next question (Default voice: Michael)"
+    )
+    bot_audio_format: Optional[str] = Field(
+        default="audio/mp3",
+        description="Audio format/MIME type of the synthesized speech response (e.g. audio/mp3 or audio/wav)"
+    )
+    bot_audio_duration_seconds: Optional[float] = Field(
+        default=None,
+        description="Synthesized audio speech duration in seconds"
+    )
+    tts_latency_ms: Optional[float] = Field(
+        default=None,
+        description="FlowEdit / Neural TTS speech synthesis latency in milliseconds"
+    )
+    total_turn_latency_ms: Optional[float] = Field(
+        default=None,
+        description="Total end-to-end turn latency (Whisper STT + SLM Prediction + Audio Synthesis) in ms"
+    )
+    voice: Optional[str] = Field(
+        default="michael",
+        description="Voice persona used for synthesizing the bot response (Default: michael)"
+    )
+
+class SynthesizeRequest(BaseModel):
+    """Request schema for standalone text-to-speech synthesis."""
+    text: str = Field(
+        ...,
+        description="Text to synthesize into spoken audio (supports oncology terms like Rybrevant, Inlexzo, Lazcluze)"
+    )
+    voice: Optional[str] = Field(
+        default="michael",
+        description="Target voice persona (default: 'michael', conditioned on michael.wav; supports 'blessing')"
+    )
+    speed: Optional[float] = Field(
+        default=1.0,
+        description="Speech rate multiplier (default 1.0)"
     )
 
 class ContextInspectionRequest(BaseModel):
@@ -390,6 +447,16 @@ def create_session(req: NewSessionRequest):
         account_name=req.account_name
     )
         
+    initial_audio_b64 = None
+    initial_audio_fmt = "audio/mp3"
+    if req.generate_audio and session.current_question:
+        try:
+            synth_res = audio_synthesizer.synthesize(session.current_question, voice="michael")
+            initial_audio_b64 = synth_res["audio_base64"]
+            initial_audio_fmt = synth_res["audio_format"]
+        except Exception as e:
+            print(f"[create_session] Notice: Initial audio generation skipped: {e}")
+
     return {
         "session_id": session.session_id,
         "role": session.role,
@@ -398,7 +465,9 @@ def create_session(req: NewSessionRequest):
         "account_name": session.slots.get("account_name"),
         "initial_question": session.current_question,
         "current_state": session.current_state,
-        "summary": session.get_summary()
+        "summary": session.get_summary(),
+        "initial_audio_base64": initial_audio_b64,
+        "initial_audio_format": initial_audio_fmt
     }
 
 @app.post("/api/session/turn", response_model=TurnResponse, tags=["Dialogue Management"])
@@ -443,7 +512,8 @@ def process_turn_stream(req: TurnRequest):
 
 @app.post("/api/audio/transcribe", response_model=AudioTranscribeResponse, tags=["Audio Pipeline"])
 async def transcribe_audio(
-    audio: UploadFile = File(..., description="Audio file to transcribe (WAV, MP3, WebM, OGG, FLAC, M4A, etc.)")
+    audio: UploadFile = File(..., description="Audio file to transcribe (WAV, MP3, WebM, OGG, FLAC, M4A, etc.)"),
+    language: Optional[str] = Form(None, description="Language code (default: 'en'). Pass 'auto' for auto-detection.")
 ):
     """
     **Standalone Audio Transcription (Whisper STT)**
@@ -465,7 +535,8 @@ async def transcribe_audio(
     try:
         result = audio_transcriber.transcribe_bytes(
             audio_bytes=contents,
-            filename=audio.filename or "audio.wav"
+            filename=audio.filename or "audio.wav",
+            language=language
         )
         return {
             "transcript": result["transcript"],
@@ -482,21 +553,23 @@ async def transcribe_audio(
 @app.post("/api/session/audio_turn", response_model=AudioTurnResponse, tags=["Audio Pipeline"])
 async def process_audio_turn(
     audio: UploadFile = File(..., description="Audio file containing the rep's spoken response"),
-    session_id: str = Form(..., description="Active session ID from /api/session/new")
+    session_id: str = Form(..., description="Active session ID from /api/session/new"),
+    voice: Optional[str] = Form(None, description="Voice persona for bot speech response (default: 'michael')"),
+    language: Optional[str] = Form(None, description="Transcription language code (default: 'en')")
 ):
     """
-    **Full Audio → SLM Pipeline (Audio Input → Predicted Next Question)**
+    **Full Audio → SLM Pipeline (Audio Input → Audio + Text Predicted Next Question)**
 
-    Combines Whisper STT transcription with the KG-Conditioned SLM next-question
-    prediction engine in a single endpoint:
+    Bi-directional voice pipeline integrating Whisper STT, KG-Conditioned SLM, and FlowEdit TTS:
 
     1. **Audio Upload** → Receives the field rep's spoken response as an audio file
     2. **Whisper STT** → Transcribes audio to text using local Whisper model
     3. **NLU Extraction** → Extracts topics, entities, and compliance signals
     4. **KG Rule Check** → Evaluates role scope permissions and compliance
     5. **SLM Prediction** → Generates the next interview question via KG-Conditioned SLM
+    6. **FlowEdit TTS** → Synthesizes the predicted question into natural speech (Default voice: Michael)
 
-    Returns the full turn result including the transcript and predicted next question.
+    Returns the complete turn result containing both verbatim text and playable base64 audio.
     """
     # Validate file size
     contents = await audio.read()
@@ -507,11 +580,12 @@ async def process_audio_turn(
             detail=f"Audio file too large ({size_mb:.1f}MB). Maximum allowed: {MAX_AUDIO_UPLOAD_MB}MB"
         )
 
-    # Step 1: Transcribe audio
+    # Step 1: Transcribe audio (Whisper STT)
     try:
         stt_result = audio_transcriber.transcribe_bytes(
             audio_bytes=contents,
-            filename=audio.filename or "audio.wav"
+            filename=audio.filename or "audio.wav",
+            language=language
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Audio transcription failed: {str(e)}")
@@ -528,12 +602,40 @@ async def process_audio_turn(
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
 
-    # Enrich response with transcription metadata
+    # Step 3: Synthesize predicted next question to speech (Default voice: Michael)
+    bot_message = result.get("bot_message", "")
+    target_voice = voice or DEFAULT_TTS_VOICE
+    tts_latency = 0.0
+    bot_audio_b64 = None
+    bot_audio_fmt = "audio/mp3"
+    audio_duration = None
+
+    if bot_message:
+        try:
+            synth_res = await audio_synthesizer.synthesize_async(bot_message, voice=target_voice)
+            bot_audio_b64 = synth_res["audio_base64"]
+            bot_audio_fmt = synth_res["audio_format"]
+            audio_duration = synth_res["duration_seconds"]
+            tts_latency = synth_res["tts_latency_ms"]
+        except Exception as e:
+            logger.warning(f"Speech synthesis error: {e}")
+
+    stt_latency = stt_result.get("transcription_latency_ms", 0.0)
+    slm_latency = result.get("latency_ms", 0.0)
+
+    # Enrich response with transcription and speech synthesis metadata
     result["transcript"] = transcript
-    result["transcription_latency_ms"] = stt_result["transcription_latency_ms"]
-    result["audio_duration_seconds"] = stt_result["duration_seconds"]
-    result["transcription_language"] = stt_result["language"]
-    result["transcription_confidence"] = stt_result["confidence"]
+    result["transcription_latency_ms"] = stt_latency
+    result["audio_duration_seconds"] = stt_result.get("duration_seconds", 0.0)
+    result["transcription_language"] = stt_result.get("language")
+    result["transcription_confidence"] = stt_result.get("confidence")
+
+    result["bot_audio_base64"] = bot_audio_b64
+    result["bot_audio_format"] = bot_audio_fmt
+    result["bot_audio_duration_seconds"] = audio_duration
+    result["tts_latency_ms"] = tts_latency
+    result["total_turn_latency_ms"] = round(stt_latency + slm_latency + tts_latency, 1)
+    result["voice"] = target_voice
 
     return result
 
@@ -541,14 +643,20 @@ async def process_audio_turn(
 @app.post("/api/session/audio_turn_stream", tags=["Audio Pipeline"])
 async def process_audio_turn_stream(
     audio: UploadFile = File(..., description="Audio file containing the rep's spoken response"),
-    session_id: str = Form(..., description="Active session ID from /api/session/new")
+    session_id: str = Form(..., description="Active session ID from /api/session/new"),
+    voice: Optional[str] = Form(None, description="Voice persona for bot speech response (default: 'michael')"),
+    language: Optional[str] = Form(None, description="Transcription language code (default: 'en')")
 ):
     """
-    **Streaming Audio → SLM Pipeline (Audio Input → SSE Token Stream)**
+    **Streaming Audio → SLM Pipeline (Audio Input → SSE Token Stream → Audio Speech)**
 
-    Same as /api/session/audio_turn but streams the SLM response token-by-token
-    via Server-Sent Events (SSE). The first SSE event contains the transcription
-    result, followed by token chunks and the final result.
+    Streams the SLM prediction token-by-token via Server-Sent Events (SSE).
+    Events emitted:
+      1. `transcription`: Transcribed rep utterance metadata
+      2. `token`: Individual tokens as generated by SLM
+      3. `metrics`: Generation telemetry (TTFT, TPS)
+      4. `result`: Final turn state and question text
+      5. `audio`: Synthesized speech audio of the predicted question (Michael voice)
     """
     # Validate file size
     contents = await audio.read()
@@ -563,7 +671,8 @@ async def process_audio_turn_stream(
     try:
         stt_result = audio_transcriber.transcribe_bytes(
             audio_bytes=contents,
-            filename=audio.filename or "audio.wav"
+            filename=audio.filename or "audio.wav",
+            language=language
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Audio transcription failed: {str(e)}")
@@ -575,14 +684,38 @@ async def process_audio_turn_stream(
             detail="No speech detected in the uploaded audio. Please try again with clearer audio."
         )
 
-    # Step 2: Stream SLM response with transcript metadata prepended
+    target_voice = voice or DEFAULT_TTS_VOICE
+
+    # Step 2: Stream SLM response followed by synthesized speech event
     def audio_event_generator():
         # First event: transcription result
         yield f"data: {json.dumps({'type': 'transcription', 'transcript': transcript, 'transcription_latency_ms': stt_result['transcription_latency_ms'], 'audio_duration_seconds': stt_result['duration_seconds'], 'language': stt_result['language'], 'confidence': stt_result['confidence']})}\n\n"
 
+        final_bot_message = ""
         # Stream SLM turn processing
         for chunk in bot.process_turn_stream(session_id=session_id, candidate_answer=transcript):
+            if chunk.get("type") == "result":
+                final_bot_message = chunk.get("bot_message", "")
+            elif chunk.get("type") == "token":
+                final_bot_message += chunk.get("token", "")
             yield f"data: {json.dumps(chunk)}\n\n"
+
+        # Synthesize the final bot message into audio (Michael voice)
+        if final_bot_message:
+            try:
+                synth_res = audio_synthesizer.synthesize(final_bot_message, voice=target_voice)
+                audio_payload = {
+                    "type": "audio",
+                    "audio_base64": synth_res["audio_base64"],
+                    "audio_format": synth_res["audio_format"],
+                    "duration_seconds": synth_res["duration_seconds"],
+                    "tts_latency_ms": synth_res["tts_latency_ms"],
+                    "voice": synth_res["voice"]
+                }
+                yield f"data: {json.dumps(audio_payload)}\n\n"
+            except Exception as e:
+                logger.warning(f"Streaming TTS generation error: {e}")
+
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
@@ -594,6 +727,45 @@ async def process_audio_turn_stream(
             "Access-Control-Allow-Origin": "*"
         }
     )
+
+
+@app.post("/api/audio/synthesize", tags=["Audio Pipeline"])
+async def synthesize_speech(req: SynthesizeRequest):
+    """
+    **Standalone Text-to-Speech Synthesis (FlowEdit TTS, Default: Michael)**
+
+    Synthesizes arbitrary text into natural speech with zero-shot speaker conditioning
+    and brand-aware oncology pronunciation normalizations.
+    """
+    target_voice = req.voice or DEFAULT_TTS_VOICE
+    synth_res = await audio_synthesizer.synthesize_async(req.text, voice=target_voice)
+
+    return {
+        "text": req.text,
+        "voice": synth_res["voice"],
+        "engine": synth_res["engine"],
+        "audio_format": synth_res["audio_format"],
+        "audio_base64": synth_res["audio_base64"],
+        "duration_seconds": synth_res["duration_seconds"],
+        "tts_latency_ms": synth_res["tts_latency_ms"]
+    }
+
+
+@app.get("/api/audio/voices", tags=["Audio Pipeline"])
+def list_available_voices():
+    """List available voice personas and defaults."""
+    return {
+        "default_voice": DEFAULT_TTS_VOICE,
+        "available_voices": list(audio_synthesizer.preset_voices.keys()),
+        "voice_details": {
+            k: {
+                "name": v["name"],
+                "gender": v["gender"],
+                "has_reference_wav": bool(v.get("speaker_wav") and os.path.exists(v["speaker_wav"]))
+            }
+            for k, v in audio_synthesizer.preset_voices.items()
+        }
+    }
 
 # Static Web Application Mounting
 if os.path.exists(WEB_DIR):

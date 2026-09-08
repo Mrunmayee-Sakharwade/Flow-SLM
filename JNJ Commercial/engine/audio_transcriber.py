@@ -59,6 +59,7 @@ class AudioTranscriber:
             device: Device to run on ('cuda', 'cpu'). Auto-detected if not specified.
         """
         self.model_size = model_size or os.getenv("WHISPER_MODEL_SIZE", "base")
+        self.default_language = os.getenv("WHISPER_LANGUAGE", "en")
         self.device = device
         self.compute_type = compute_type or os.getenv("WHISPER_COMPUTE_TYPE", "")
         self._model = None
@@ -89,12 +90,30 @@ class AudioTranscriber:
         if not self.compute_type:
             self.compute_type = "float16" if self.device == "cuda" else "int8"
 
-        print(f"[AudioTranscriber] Loading Whisper '{self.model_size}' model "
-              f"(device={self.device}, compute_type={self.compute_type})...")
+        # Check for model path or size: env var or explicit
+        model_name_or_path = self.model_size
+        env_model_path = os.getenv("WHISPER_MODEL_PATH")
+        if env_model_path and (os.path.isdir(env_model_path) or os.path.isfile(env_model_path)):
+            model_name_or_path = env_model_path
+        else:
+            for cand in [
+                os.getenv("WHISPER_MODEL_DIR", ""),
+                "/home/rsurya/projects/flow_edit/Flowedit/model/whisper",
+                "/home/rsurya/projects/flow_edit/model/whisper",
+            ]:
+                if cand and os.path.isdir(cand) and (
+                    os.path.isfile(os.path.join(cand, "model.bin")) or
+                    os.path.isfile(os.path.join(cand, "model.safetensors"))
+                ):
+                    model_name_or_path = cand
+                    break
+
+        print(f"[AudioTranscriber] Loading Whisper '{model_name_or_path}' model "
+              f"(device={self.device}, compute_type={self.compute_type}, default_lang={self.default_language})...")
 
         t0 = time.time()
         self._model = WhisperModel(
-            self.model_size,
+            model_name_or_path,
             device=self.device,
             compute_type=self.compute_type
         )
@@ -114,12 +133,9 @@ class AudioTranscriber:
         try:
             from pydub import AudioSegment
         except ImportError:
-            raise ImportError(
-                "\n[Error] 'pydub' is required for audio format conversion.\n"
-                "Install it using:\n"
-                "    pip install pydub\n"
-                "Also ensure ffmpeg is installed on your system.\n"
-            )
+            # faster-whisper natively decodes WebM, MP3, OGG, FLAC via PyAV without needing pydub
+            logger.debug(f"[AudioTranscriber] pydub not installed; passing {ext} directly to faster-whisper PyAV decoder.")
+            return audio_path
 
         logger.info(f"[AudioTranscriber] Converting {ext} -> WAV...")
 
@@ -189,12 +205,17 @@ class AudioTranscriber:
         converted_path = self._convert_to_wav(audio_path)
         is_temp = converted_path != audio_path
 
+        # Resolve target language: default to configured language ('en') to prevent foreign hallucinations
+        target_lang = language if language is not None else self.default_language
+        if target_lang and str(target_lang).lower() in ("auto", "none", ""):
+            target_lang = None
+
         try:
             t_start = time.perf_counter()
 
             segments_gen, info = self._model.transcribe(
                 converted_path,
-                language=language,
+                language=target_lang,
                 beam_size=beam_size,
                 vad_filter=True,
                 vad_parameters=dict(

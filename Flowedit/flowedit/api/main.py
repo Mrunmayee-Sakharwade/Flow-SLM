@@ -45,7 +45,7 @@ def write_audio_file(path: str, data: np.ndarray, sample_rate: int):
             wf.setframerate(sample_rate)
             wf.writeframes(int16_data.tobytes())
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Query
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 

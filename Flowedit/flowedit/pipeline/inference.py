@@ -95,16 +95,48 @@ class FlowEditInference:
         t0 = time.time()
         text = normalize_indic_phonetics(text)
 
-        # Ensure speaker_wav is valid; if not provided or missing, resolve to hardcoded preset voice
+        # Ensure speaker_wav is valid; if not provided or missing, resolve to preset voice
         if not speaker_wav or not os.path.isfile(speaker_wav):
-            from flowedit.api.main import get_hardcoded_voice_path
             target = "michael" if (speaker_name or "").strip().lower() in ("male", "man", "michael") else "blessing"
-            resolved = get_hardcoded_voice_path(target)
+            resolved = None
+            try:
+                from flowedit.api.main import get_hardcoded_voice_path
+                resolved = get_hardcoded_voice_path(target)
+            except Exception:
+                pass
+
+            if not resolved or not os.path.isfile(resolved):
+                # Robust self-contained fallback without relying on api.main
+                target_filename = f"{target}.wav"
+                curr_file = os.path.abspath(__file__)
+                flowedit_root = os.path.dirname(os.path.dirname(os.path.dirname(curr_file)))
+                pkg_dir = os.path.dirname(os.path.dirname(curr_file))
+                workspace_root = os.path.dirname(flowedit_root)
+
+                cands = [
+                    os.path.join(flowedit_root, "model", target_filename),
+                    os.path.join(flowedit_root, "deploy_voices", target_filename),
+                    os.path.join(pkg_dir, "resources", target_filename),
+                    os.path.join(workspace_root, target_filename),
+                    os.path.join(workspace_root, "Flow-SLM", target_filename),
+                    f"/home/rsurya/projects/flow_edit/Flowedit/model/{target_filename}",
+                    f"/home/rsurya/projects/flow_edit/Flowedit/deploy_voices/{target_filename}",
+                    f"/home/rsurya/projects/flow_edit/{target_filename}",
+                    f"/home/rsurya/projects/flow_edit/Flow-SLM/{target_filename}",
+                    # Fallback to default_speaker.wav
+                    os.path.join(pkg_dir, "resources", "default_speaker.wav"),
+                    f"/home/rsurya/projects/flow_edit/Flowedit/flowedit/resources/default_speaker.wav",
+                ]
+                for c in cands:
+                    if c and os.path.isfile(c) and os.path.getsize(c) > 1000:
+                        resolved = os.path.abspath(c)
+                        break
+
             if resolved and os.path.isfile(resolved):
                 speaker_wav = resolved
-                logger.info(f"Using hardcoded {target} voice for synthesis: {speaker_wav}")
+                logger.info(f"Using resolved {target} voice for synthesis: {speaker_wav}")
             else:
-                raise FileNotFoundError(f"Speaker audio not provided and hardcoded voice for '{target}' not found on disk.")
+                raise FileNotFoundError(f"Speaker audio not provided and voice reference for '{target}' not found on disk.")
 
         # Autonomous Memory Check 1: S3 Spelling Store (deterministic phonetic respelling via shared HomographContextResolver)
         from flowedit.memory.s3_storage import s3_spelling_store
