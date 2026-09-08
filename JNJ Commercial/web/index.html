@@ -194,6 +194,9 @@
         <span class="sub-header-status">
           Knowledge Graph Active &bull; <strong id="active-role-text">OS Commercial Scope</strong>
         </span>
+        <button class="btn-voice-toggle" id="btn-voice-toggle" type="button" title="Toggle Bot Speech Auto-Play">
+          <span id="voice-toggle-icon">🔊</span> <span id="voice-toggle-label">Voice: Michael (ON)</span>
+        </button>
       </div>
       
       <!-- Collapsible Quick Test Prompts (Discreet & Non-Intrusive) -->
@@ -232,20 +235,34 @@
           <!-- Chat messages rendered dynamically -->
         </div>
 
+        <!-- Live Audio Recording Indicator -->
+        <div class="audio-recording-indicator" id="audio-recording-indicator" style="display: none;">
+          <div class="recording-pulse-dot"></div>
+          <span class="recording-label">Recording Voice Input (Microphone Active)...</span>
+          <span class="recording-timer" id="recording-timer">00:00</span>
+          <div class="recording-actions">
+            <button class="btn-cancel-recording" id="btn-cancel-rec" type="button">✖ Cancel</button>
+            <button class="btn-finish-recording" id="btn-finish-rec" type="button">✓ Send Audio Turn</button>
+          </div>
+        </div>
+
         <!-- Chat Input Panel -->
         <div class="chat-input-panel">
           <div class="input-box-container">
             <textarea 
               id="user-input-box" 
-              placeholder="Type rep response (e.g., 'I met Dr. Anurag at Apollo Hospital to discuss eligible NMIBC cases...')"
+              placeholder="Type rep response or click Speak to record voice..."
               rows="1"
             ></textarea>
+            <button class="btn-mic-record" id="btn-mic" type="button" title="Speak Response (Microphone Voice Input)">
+              🎙️ Speak
+            </button>
             <button class="btn-send-message" id="btn-send" type="button">
               Send
             </button>
           </div>
           <div class="input-keyboard-hint">
-            Press <strong>Enter</strong> to send &bull; Neo4j Knowledge Graph Grounded &bull; Anti-Repetition Enforced
+            Press <strong>Enter</strong> to send &bull; <strong>🎙️ Speak</strong> for Audio In &rarr; Audio Out &bull; FlowEdit (Michael) Powered
           </div>
         </div>
 

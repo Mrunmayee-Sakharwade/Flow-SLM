@@ -1634,3 +1634,248 @@ button {
   border: 1px solid var(--color-danger-border);
   color: #B91C1C;
 }
+
+/* ==========================================================================
+   BI-DIRECTIONAL AUDIO PIPELINE: VOICE CONTROLS & AUDIO PLAYER
+   ========================================================================== */
+
+/* Sub-Header Voice Toggle */
+.btn-voice-toggle {
+  margin-left: 12px;
+  background: rgba(13, 71, 161, 0.08);
+  border: 1px solid rgba(13, 71, 161, 0.2);
+  color: var(--color-jnj-navy, #002B66);
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s ease;
+}
+
+.btn-voice-toggle:hover {
+  background: rgba(13, 71, 161, 0.16);
+  border-color: var(--color-jnj-navy, #002B66);
+}
+
+.btn-voice-toggle.muted {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #64748b;
+}
+
+/* Microphone Record Button in Input Panel */
+.btn-mic-record {
+  background: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-mic-record:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.btn-mic-record.recording {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #b91c1c;
+  animation: pulse-recording 1.5s infinite;
+}
+
+@keyframes pulse-recording {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+/* Live Recording Indicator Banner */
+.audio-recording-indicator {
+  display: flex;
+  align-items: center;
+  background: #fff1f2;
+  border: 1.5px solid #fecdd3;
+  border-radius: 10px;
+  padding: 10px 16px;
+  margin: 0 16px 12px 16px;
+  gap: 12px;
+}
+
+.recording-pulse-dot {
+  width: 12px;
+  height: 12px;
+  background: #e11d48;
+  border-radius: 50%;
+  animation: pulse-dot 1s infinite alternate;
+}
+
+@keyframes pulse-dot {
+  from { opacity: 0.4; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1.15); }
+}
+
+.recording-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #9f1239;
+  flex: 1;
+}
+
+.recording-timer {
+  font-family: monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: #be123c;
+  background: #ffe4e6;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.recording-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-cancel-recording {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-cancel-recording:hover {
+  background: #e2e8f0;
+}
+
+.btn-finish-recording {
+  background: #e11d48;
+  border: none;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(225, 29, 72, 0.3);
+}
+
+.btn-finish-recording:hover {
+  background: #be123c;
+}
+
+/* Embedded Bot Audio Player inside Chat Bubble */
+.bot-audio-player {
+  margin-top: 10px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.audio-play-btn {
+  background: var(--color-jnj-navy, #002B66);
+  border: none;
+  color: #ffffff;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s, background-color 0.2s;
+}
+
+.audio-play-btn:hover {
+  transform: scale(1.08);
+  background: #0D47A1;
+}
+
+.audio-play-btn.playing {
+  background: #0284c7;
+}
+
+.audio-player-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.audio-voice-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.audio-duration-meta {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.audio-wave-anim {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 14px;
+}
+
+.audio-wave-bar {
+  width: 2.5px;
+  height: 4px;
+  background: #0284c7;
+  border-radius: 1px;
+  transition: height 0.15s;
+}
+
+.audio-wave-anim.active .audio-wave-bar {
+  animation: wave-bar-dance 0.8s ease-in-out infinite alternate;
+}
+
+.audio-wave-anim.active .audio-wave-bar:nth-child(2) { animation-delay: 0.15s; }
+.audio-wave-anim.active .audio-wave-bar:nth-child(3) { animation-delay: 0.3s; }
+.audio-wave-anim.active .audio-wave-bar:nth-child(4) { animation-delay: 0.45s; }
+
+@keyframes wave-bar-dance {
+  from { height: 3px; }
+  to { height: 14px; }
+}
+
+.turn-audio-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+
