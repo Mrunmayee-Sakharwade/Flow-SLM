@@ -19,7 +19,8 @@ WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 
 # Initialize Bot Engine
 print("Initializing AnQ Bot Call Capture Engine...")
-bot = RuleGovernedCallBot()
+KG_JSON_PATH = os.path.join(os.path.dirname(__file__), "kg_os.json")
+bot = RuleGovernedCallBot(kg_path=KG_JSON_PATH)
 
 # Machine Warmup for Sub-100ms Inference
 def warmup_engine(engine_bot):
@@ -84,12 +85,93 @@ DEMO_SCENARIOS = [
     }
 ]
 
+# ---------------------------------------------------------------------------
+# Autocorrector & Filler-Word Removal Engine (Phonetic J&J Oncology Lexicon)
+# ---------------------------------------------------------------------------
+import re
+
+FILLER_REGEX = re.compile(
+    r'\b(um+|uh+|er+|ah+|eh+|hmm+|like|you know|i mean|basically|actually|honestly|literally|so yeah|right\?)\b[,.]?',
+    re.IGNORECASE
+)
+STUTTER_REGEX = re.compile(r'\b([a-zA-Z]+)\s+\1\b', re.IGNORECASE)
+
+ONCOLOGY_REPLACEMENTS = [
+    (re.compile(r'\b(inlexo|inlexzo|in\s+lex\s+so|inlezzo|inlexio|inlex|in\s*lexo)\b', re.IGNORECASE), "INLEXZO®"),
+    (re.compile(r'\b(ribrevant|rye\s+brevant|ribrevont|rybreven|rybrevent|rye\s+breva|ribrevan)\b', re.IGNORECASE), "RYBREVANT®"),
+    (re.compile(r'\b(lazcluze|lascluze|laz\s+cruise|lazcluz|las\s+cruise|lascluz|laz\s+cluse)\b', re.IGNORECASE), "LAZCLUZE®"),
+    (re.compile(r'\b(amivantamab|amivantimab|ami\s+vantamab|amivanta)\b', re.IGNORECASE), "amivantamab"),
+    (re.compile(r'\b(lazertinib|laser\s+tinib|lazertanib)\b', re.IGNORECASE), "lazertinib"),
+    (re.compile(r'\b(n\s*m\s*i\s*b\s*c|non\s+muscle\s+invasive\s+bladder\s+cancer)\b', re.IGNORECASE), "NMIBC"),
+    (re.compile(r'\b(n\s*s\s*c\s*l\s*c|non\s+small\s+cell\s+lung\s+cancer)\b', re.IGNORECASE), "NSCLC"),
+    (re.compile(r'\b(b\s*c\s*g|b\.c\.g\.)\s*(unresponsive|refractory)?\b', re.IGNORECASE), "BCG-unresponsive"),
+    (re.compile(r'\b(prior\s+auto|prior\s+oz|pa\s+delay|p\s+a\s+delay|prior\s+auth)\b', re.IGNORECASE), "prior authorization"),
+    (re.compile(r'\b(t\s*u\s*r\s*b\s*t|trans\s*urethral\s+resection)\b', re.IGNORECASE), "TURBT"),
+    (re.compile(r'\b(cystoscopy|sistoscopy|cysto)\b', re.IGNORECASE), "cystoscopy"),
+    (re.compile(r'\b(bio\s*marker|biomarkers)\b', re.IGNORECASE), "biomarker testing"),
+    (re.compile(r'\b(hub\s+enrolment|hub\s+enroll)\b', re.IGNORECASE), "hub enrollment"),
+    (re.compile(r'\b(copay\s+card|copay\s+assistance|co\s*pay)\b', re.IGNORECASE), "copay assistance"),
+]
+
+def clean_and_autocorrect_text(raw_text: str):
+    if not raw_text:
+        return {"raw": "", "cleaned": "", "fillers_removed": [], "corrections": [], "has_changes": False}
+    text = raw_text.strip()
+    fillers = []
+    corrections = []
+    
+    # Fillers & hesitation
+    for m in FILLER_REGEX.finditer(text):
+        f = m.group(0).strip(" ,.")
+        if f and f.lower() not in [x.lower() for x in fillers]:
+            fillers.append(f)
+    text = FILLER_REGEX.sub(" ", text)
+    
+    # Stutter duplications
+    text = STUTTER_REGEX.sub(r"\1", text)
+    
+    # Oncology lexicon replacements
+    for pattern, repl in ONCOLOGY_REPLACEMENTS:
+        matches = pattern.findall(text)
+        if matches:
+            for match_item in matches:
+                m_str = match_item if isinstance(match_item, str) else match_item[0]
+                if m_str and m_str.lower() != repl.lower():
+                    corrections.append({"from": m_str, "to": repl})
+            text = pattern.sub(repl, text)
+            
+    text = re.sub(r'\s+', ' ', text).strip()
+    if text:
+        text = text[0].upper() + text[1:]
+        if not text.endswith(('.', '?', '!')):
+            text += '.'
+            
+    return {
+        "raw": raw_text,
+        "cleaned": text,
+        "fillers_removed": fillers,
+        "corrections": corrections,
+        "has_changes": text != raw_text
+    }
+
+
 class RequestHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=WEB_DIR, **kwargs)
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+
+        if parsed.path in ("/mobile", "/mobile.html"):
+            mobile_file = os.path.join(WEB_DIR, "mobile.html")
+            if os.path.exists(mobile_file):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                with open(mobile_file, "rb") as f:
+                    self.wfile.write(f.read())
+                return
         
         if parsed.path == "/api/health":
             self.send_response(200)
@@ -221,6 +303,16 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.flush()
             except Exception:
                 pass
+            return
+
+        elif parsed.path == "/api/text/autocorrect":
+            text = data.get("text", "")
+            result = clean_and_autocorrect_text(text)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(result).encode("utf-8"))
             return
 
         self.send_response(404)

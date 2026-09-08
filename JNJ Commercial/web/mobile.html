@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#07090E">
+  <title>AnQ Bot | Commercial Oncology Mobile Call Noter</title>
+  
+  <!-- Modern Typography from Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Mobile Stylesheet -->
+  <link rel="stylesheet" href="mobile.css">
+</head>
+<body>
+
+  <!-- =========================================================================
+       DESKTOP DEVICE SIMULATOR & VIEWPORT WRAPPER
+       ========================================================================= -->
+  <div class="app-viewport-wrapper">
+    
+    <!-- Desktop Simulator Controls -->
+    <aside class="desktop-view-toggle">
+      <span>📱 Mobile Viewport</span>
+      <button class="btn-toggle-frame" id="btn-toggle-frame" type="button" title="Toggle Phone Frame or Fullscreen">
+        <span>🖥️ Fullscreen</span>
+      </button>
+      <a href="/" class="btn-desktop-back" title="Switch to Desktop Call Workspace">
+        Desktop Workspace &rarr;
+      </a>
+    </aside>
+
+    <!-- DEVICE SHELL (iPhone 16 Pro / Pixel Frame) -->
+    <div class="device-shell" id="device-shell">
+
+      <!-- DEVICE STATUS BAR -->
+      <div class="device-status-bar">
+        <span class="device-time">9:41</span>
+        
+        <!-- DYNAMIC ISLAND (Pulsing Microphone & Voice Telemetry) -->
+        <div class="dynamic-island" id="dynamic-island">
+          <div class="island-camera-dot"></div>
+          <div class="island-content">
+            <span class="island-pulse-dot"></span>
+            <span id="island-status-text">Ready</span>
+            <div class="island-wave-anim">
+              <span class="island-wave-bar"></span>
+              <span class="island-wave-bar"></span>
+              <span class="island-wave-bar"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="device-icons">
+          <span>5G</span>
+          <span>📶</span>
+          <span>100%</span>
+        </div>
+      </div>
+
+      <!-- MOBILE APP SCREEN VIEW CONTAINER -->
+      <div class="mobile-app-screen">
+
+        <!-- ===================================================================
+             SCREEN 1: ONBOARDING & LOGIN SCREEN
+             =================================================================== -->
+        <div class="screen-view screen-login" id="screen-login">
+          
+          <!-- Brand Header -->
+          <div class="login-brand-header">
+            <div class="mobile-logo-badge">
+              <span class="badge-dot"></span>
+              <span class="badge-text">J&amp;J INNOVATIVE MEDICINE</span>
+            </div>
+            <h1 class="login-title-h1">Commercial Call Noter</h1>
+            <p class="login-tagline">
+              AI-Powered Voice Capture Grounded in Neo4j Commercial Knowledge Graphs &amp; SLM Guardrails
+            </p>
+          </div>
+
+          <!-- Representative Name Input -->
+          <div class="login-form-group">
+            <label for="login-rep-name" class="login-field-label">
+              <span>Field Representative <span class="required-star">*</span></span>
+              <span style="font-size: 10px; color: var(--text-muted);">Audit Verified</span>
+            </label>
+            <input 
+              type="text" 
+              id="login-rep-name" 
+              class="login-text-input" 
+              placeholder="Enter your full name" 
+              value="Dr. Anurag Verma"
+              required 
+            />
+            
+            <!-- Quick Preset Chips -->
+            <div class="quick-preset-chips">
+              <span class="rep-preset-chip active" data-name="Dr. Anurag Verma">Dr. Anurag Verma</span>
+              <span class="rep-preset-chip" data-name="Lisa Martinez">Lisa Martinez</span>
+              <span class="rep-preset-chip" data-name="Aniruddha Joshi">Aniruddha Joshi</span>
+            </div>
+          </div>
+
+          <!-- Commercial Persona Selection -->
+          <div class="login-form-group">
+            <label class="login-field-label">
+              <span>Commercial Persona Role <span class="required-star">*</span></span>
+            </label>
+            <div class="mobile-role-selector">
+              
+              <!-- OS Card -->
+              <div class="mobile-role-card active" data-role="OS" id="role-card-os">
+                <div class="role-card-top">
+                  <span class="role-code-badge os">OS</span>
+                  <span style="font-size: 10px; color: #60A5FA;">Sales</span>
+                </div>
+                <div class="role-card-name">Oncology Specialist</div>
+                <div class="role-card-focus">
+                  Efficacy, patient pathway, NMIBC &amp; NSCLC doctor engagement.
+                </div>
+              </div>
+
+              <!-- FRM Card -->
+              <div class="mobile-role-card" data-role="FRM" id="role-card-frm">
+                <div class="role-card-top">
+                  <span class="role-code-badge frm">FRM</span>
+                  <span style="font-size: 10px; color: #34D399;">Access</span>
+                </div>
+                <div class="role-card-name">Reimbursement Mgr</div>
+                <div class="role-card-focus">
+                  Payer policy, prior auth holdups, hub enrollment &amp; co-pay.
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Oncology Brand Selection -->
+          <div class="login-form-group">
+            <label class="login-field-label">
+              <span>Target Brand Focus <span class="required-star">*</span></span>
+            </label>
+            <div class="brand-pills-wrap">
+              <div class="brand-pill-option active" data-brand="INLEXZO">
+                <span class="brand-pill-name">INLEXZO®</span>
+                <span class="brand-pill-tag">Targeted Urothelial / NMIBC</span>
+              </div>
+              <div class="brand-pill-option" data-brand="RYBREVANT">
+                <span class="brand-pill-name">RYBREVANT®</span>
+                <span class="brand-pill-tag">Bispecific EGFR NSCLC</span>
+              </div>
+              <div class="brand-pill-option" data-brand="RYBREVANT + LAZCLUZE">
+                <span class="brand-pill-name">RYBREVANT® + LAZCLUZE®</span>
+                <span class="brand-pill-tag">1L Combination Regimen</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Account Selection -->
+          <div class="login-form-group">
+            <label for="login-account-select" class="login-field-label">
+              <span>Healthcare Account / Clinic</span>
+            </label>
+            <select id="login-account-select" class="login-select">
+              <option value="Atlantic Urology Associates" selected>Atlantic Urology Associates</option>
+              <option value="Northside Urology">Northside Urology</option>
+              <option value="Capital Bladder Cancer Center">Capital Bladder Cancer Center</option>
+              <option value="Central Ohio Urology">Central Ohio Urology</option>
+              <option value="Apollo Hospitals">Apollo Hospitals</option>
+              <option value="Memorial Cancer Institute">Memorial Cancer Institute</option>
+            </select>
+          </div>
+
+          <!-- API Endpoint Connection Settings -->
+          <div class="endpoint-config-accordion">
+            <div class="endpoint-summary-row" id="endpoint-summary-toggle">
+              <div>
+                <span class="endpoint-status-dot" id="endpoint-status-dot"></span>
+                <span id="endpoint-summary-text">Connected: Local Server</span>
+              </div>
+              <span style="font-size: 10px; color: var(--primary-blue);">Config &darr;</span>
+            </div>
+            <div class="endpoint-input-wrap">
+              <input 
+                type="text" 
+                id="endpoint-input" 
+                class="endpoint-input" 
+                placeholder="http://localhost:8080 or http://10.225.67.250:8008" 
+              />
+              <button class="btn-test-endpoint" id="btn-test-endpoint" type="button">Test Ping</button>
+            </div>
+          </div>
+
+          <!-- Launch Button -->
+          <button class="btn-launch-call" id="btn-launch-call" type="button">
+            <span>Launch Call Noter Session</span>
+            <span>&rarr;</span>
+          </button>
+
+          <!-- Footer Badge -->
+          <div class="login-compliance-footer">
+            <span>🔒 Governed by J&amp;J Oncology Compliance &amp; Real-Time KG Policies</span>
+          </div>
+
+        </div>
+
+
+        <!-- ===================================================================
+             SCREEN 2: MAIN CALL NOTER WORKSPACE
+             =================================================================== -->
+        <div class="screen-view screen-call-noter hidden-screen" id="screen-call-noter">
+
+          <!-- TOP APP HEADER -->
+          <header class="mobile-app-header">
+            <div class="header-left-group">
+              <div class="rep-avatar-small" id="header-avatar">AV</div>
+              <div class="header-meta">
+                <span class="header-rep-name" id="header-rep-name">Dr. Anurag Verma</span>
+                <span class="header-role-pill" id="header-role-pill">OS Commercial</span>
+              </div>
+            </div>
+
+            <!-- Call Timer -->
+            <div class="header-center-timer">
+              <span class="call-pulse-dot"></span>
+              <span class="call-timer-digits" id="call-timer-digits">00:00</span>
+            </div>
+
+            <!-- Actions -->
+            <div class="header-right-group">
+              <button class="btn-header-voice active" id="btn-header-voice" type="button" title="Toggle FlowEdit Speech Audio">
+                🔊
+              </button>
+              <button class="btn-header-end" id="btn-header-end" type="button">
+                End Call
+              </button>
+            </div>
+          </header>
+
+          <!-- KNOWLEDGE GRAPH 7-STEP PROGRESS TIMELINE -->
+          <section class="kg-stepper-strip">
+            <div class="stepper-header-row">
+              <span class="stepper-node-title" id="stepper-node-title">
+                🕸️ 1. Account Context
+              </span>
+              <span class="stepper-turn-badge" id="stepper-turn-badge">
+                Turn 0 &bull; Step 1 of 7
+              </span>
+            </div>
+            
+            <div class="stepper-progress-track">
+              <div class="stepper-progress-fill" id="stepper-progress-fill"></div>
+            </div>
+
+            <div class="stepper-dots-row">
+              <span class="stepper-step-dot active" data-step="0" title="Account Identification"></span>
+              <span class="stepper-step-dot" data-step="1" title="Discussion Purpose"></span>
+              <span class="stepper-step-dot" data-step="2" title="Case Eligibility"></span>
+              <span class="stepper-step-dot" data-step="3" title="Suitability & Pathway"></span>
+              <span class="stepper-step-dot" data-step="4" title="Account Blocker"></span>
+              <span class="stepper-step-dot" data-step="5" title="Next Action Plan"></span>
+              <span class="stepper-step-dot" data-step="6" title="Compliant Closure"></span>
+            </div>
+          </section>
+
+          <!-- LIVE CONVERSATION STREAM -->
+          <main class="mobile-chat-feed" id="mobile-chat-feed">
+            <!-- Dynamically populated with AI Question and Spoken Rep Turn bubbles -->
+          </main>
+
+          <!-- FLOATING CALL NOTER INTERACTION DOCK -->
+          <div class="mobile-interaction-dock">
+            
+            <!-- Real-time Audio Waveform Visualizer Canvas Bar -->
+            <div class="live-audio-canvas-bar" id="live-audio-canvas-bar">
+              <canvas id="waveform-canvas" class="audio-waveform-canvas" width="380" height="28"></canvas>
+            </div>
+
+            <!-- Autocorrect Status & Handsfree Mode Row -->
+            <div class="dock-status-row">
+              <div class="dock-autocorrect-toggle active" id="dock-autocorrect-toggle" title="Toggle Real-Time Filler & Mispronunciation Autocorrect">
+                <span>✨</span>
+                <span id="autocorrect-toggle-text">Autocorrect: ON</span>
+              </div>
+              <span class="dock-mode-indicator">FlowEdit (Michael) Active</span>
+            </div>
+
+            <!-- Central Dock Controls -->
+            <div class="dock-controls-row">
+              
+              <!-- Keyboard Drawer Button -->
+              <button class="btn-dock-keyboard" id="btn-dock-keyboard" type="button" title="Type response manually">
+                ⌨️
+              </button>
+
+              <!-- GIANT CENTER MICROPHONE BUTTON -->
+              <button class="btn-giant-mic" id="btn-giant-mic" type="button">
+                <span>🎙️</span>
+                <span id="giant-mic-label">Speak Rep Response</span>
+              </button>
+
+              <!-- Continuous Handsfree Mode Button -->
+              <button class="btn-dock-handsfree" id="btn-dock-handsfree" type="button" title="Continuous Hands-Free Call Noter Mode">
+                <span>Hands-Free</span>
+              </button>
+
+            </div>
+
+            <!-- Expandable Text Input Drawer -->
+            <div class="dock-text-drawer" id="dock-text-drawer">
+              <textarea 
+                id="dock-textarea" 
+                class="dock-textarea" 
+                placeholder="Type response or view live speech transcript..." 
+                rows="2"
+              ></textarea>
+              <button class="btn-dock-send" id="btn-dock-send" type="button">Send</button>
+            </div>
+
+          </div>
+
+          <!-- BOTTOM NAVIGATION TABS -->
+          <nav class="mobile-bottom-tabs">
+            <button class="m-tab-item active" data-tab="call" type="button">
+              <span class="m-tab-icon">💬</span>
+              <span class="m-tab-label">Call</span>
+            </button>
+            <button class="m-tab-item" data-tab="summary" type="button">
+              <span class="m-tab-icon">📋</span>
+              <span class="m-tab-label">Note Summary</span>
+            </button>
+            <button class="m-tab-item" data-tab="scope" type="button">
+              <span class="m-tab-icon">🕸️</span>
+              <span class="m-tab-label">KG Scope</span>
+            </button>
+            <button class="m-tab-item" data-tab="settings" type="button">
+              <span class="m-tab-icon">⚙️</span>
+              <span class="m-tab-label">Settings</span>
+            </button>
+          </nav>
+
+        </div>
+
+      </div>
+
+
+      <!-- ===================================================================
+           BOTTOM SHEET 1: NOTE SUMMARY DRAWER
+           =================================================================== -->
+      <div class="mobile-bottom-sheet" id="sheet-summary">
+        <div class="sheet-panel-card">
+          <div class="sheet-handle-bar"></div>
+          <div class="sheet-header-row">
+            <span class="sheet-title">📋 Captured CRM Call Note</span>
+            <button class="btn-sheet-close" type="button">&times;</button>
+          </div>
+          <div class="sheet-scroll-body">
+            
+            <div class="note-kv-table">
+              <div class="note-kv-item">
+                <span class="note-kv-key">Field Representative</span>
+                <span class="note-kv-val" id="kv-rep">Dr. Anurag Verma</span>
+              </div>
+              <div class="note-kv-item">
+                <span class="note-kv-key">Commercial Role</span>
+                <span class="note-kv-val" id="kv-role">Oncology Specialist (OS)</span>
+              </div>
+              <div class="note-kv-item">
+                <span class="note-kv-key">Product Focus</span>
+                <span class="note-kv-val" id="kv-brand">INLEXZO®</span>
+              </div>
+              <div class="note-kv-item">
+                <span class="note-kv-key">Account / Site</span>
+                <span class="note-kv-val" id="kv-account">Atlantic Urology Associates</span>
+              </div>
+              <div class="note-kv-item">
+                <span class="note-kv-key">Doctor / HCP Met</span>
+                <span class="note-kv-val" id="kv-hcp">—</span>
+              </div>
+              <div class="note-kv-item">
+                <span class="note-kv-key">Account Blocker</span>
+                <span class="note-kv-val" id="kv-barrier" style="color:#F59E0B;">—</span>
+              </div>
+              <div class="note-kv-item">
+                <span class="note-kv-key">Next Action</span>
+                <span class="note-kv-val" id="kv-action" style="color:#60A5FA;">—</span>
+              </div>
+            </div>
+
+            <button class="btn-copy-crm" id="btn-copy-crm" type="button">
+              <span>📋 Copy Structured Veeva CRM Note</span>
+            </button>
+
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ===================================================================
+           BOTTOM SHEET 2: KNOWLEDGE GRAPH SCOPE DRAWER
+           =================================================================== -->
+      <div class="mobile-bottom-sheet" id="sheet-scope">
+        <div class="sheet-panel-card">
+          <div class="sheet-handle-bar"></div>
+          <div class="sheet-header-row">
+            <span class="sheet-title">🛡️ Role Policy &amp; Scope Governance</span>
+            <button class="btn-sheet-close" type="button">&times;</button>
+          </div>
+          <div class="sheet-scroll-body">
+            
+            <div style="font-size:12px; font-weight:700; color:#34D399; margin-bottom:4px;">
+              ✓ In-Scope Permitted Topics:
+            </div>
+            <div style="font-size:11px; color:#E2E8F0; line-height:1.6; background:rgba(255,255,255,0.04); padding:10px; border-radius:8px;">
+              Clinical trial efficacy, NMIBC / NSCLC indications, doctor engagement, diagnostic pathway criteria, practice follow-up scheduling.
+            </div>
+
+            <div style="font-size:12px; font-weight:700; color:#F87171; margin-top:10px; margin-bottom:4px;">
+              ✕ Out-of-Scope Compliance Boundaries:
+            </div>
+            <div style="font-size:11px; color:#E2E8F0; line-height:1.6; background:rgba(255,255,255,0.04); padding:10px; border-radius:8px;">
+              Off-label promotion, patient identifiable data (PHI/PII), unapproved indications, pricing negotiations without Market Access.
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ===================================================================
+           BOTTOM SHEET 3: SETTINGS DRAWER
+           =================================================================== -->
+      <div class="mobile-bottom-sheet" id="sheet-settings">
+        <div class="sheet-panel-card">
+          <div class="sheet-handle-bar"></div>
+          <div class="sheet-header-row">
+            <span class="sheet-title">⚙️ Speech &amp; Autocorrect Settings</span>
+            <button class="btn-sheet-close" type="button">&times;</button>
+          </div>
+          <div class="sheet-scroll-body">
+            
+            <div class="note-kv-item">
+              <span class="note-kv-key">Filler Word Stripping</span>
+              <span class="note-kv-val" style="color:#10B981;">Enabled (um, uh, like)</span>
+            </div>
+            <div class="note-kv-item">
+              <span class="note-kv-key">Medical Autocorrection</span>
+              <span class="note-kv-val" style="color:#10B981;">Enabled (Phonetic J&amp;J Lexicon)</span>
+            </div>
+            <div class="note-kv-item">
+              <span class="note-kv-key">Default Bot Voice</span>
+              <span class="note-kv-val">Michael (FlowEdit)</span>
+            </div>
+            <div class="note-kv-item">
+              <span class="note-kv-key">Inference Acceleration</span>
+              <span class="note-kv-val" style="color:#60A5FA;">Sub-100ms TRT</span>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ===================================================================
+           BOTTOM SHEET 4: AUTOCORRECT DIFF INSPECTOR DRAWER
+           =================================================================== -->
+      <div class="mobile-bottom-sheet" id="sheet-diff">
+        <div class="sheet-panel-card">
+          <div class="sheet-handle-bar"></div>
+          <div class="sheet-header-row">
+            <span class="sheet-title">✨ Speech Autocorrect Diff Inspector</span>
+            <button class="btn-sheet-close" type="button">&times;</button>
+          </div>
+          <div class="sheet-scroll-body">
+            
+            <div class="diff-compare-box">
+              <span class="diff-section-label raw">Raw Spoken Speech (Before Cleaning):</span>
+              <p class="diff-text-block" id="diff-raw-text">—</p>
+            </div>
+
+            <div class="diff-compare-box">
+              <span class="diff-section-label cleaned">Cleaned Professional CRM Note (After Autocorrect):</span>
+              <p class="diff-text-block" id="diff-cleaned-text">—</p>
+            </div>
+
+            <div>
+              <span style="font-size:11px; font-weight:700; color:#FCA5A5;">Stripped Filler Words &amp; Stutters:</span>
+              <div id="diff-fillers-list" style="display:flex; flex-wrap:wrap; gap:5px; margin-top:4px;"></div>
+            </div>
+
+            <div style="margin-top:8px;">
+              <span style="font-size:11px; font-weight:700; color:#6EE7B7;">Phonetically Corrected Medical Terms:</span>
+              <div id="diff-corrections-list" style="display:flex; flex-wrap:wrap; gap:5px; margin-top:4px;"></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Mobile Application Logic Script -->
+  <script src="mobile.js"></script>
+</body>
+</html>

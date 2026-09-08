@@ -859,6 +859,19 @@ if os.path.exists(WEB_DIR):
     def serve_ui():
         return FileResponse(os.path.join(WEB_DIR, "index.html"))
 
+    @app.get("/mobile", include_in_schema=False)
+    @app.get("/mobile.html", include_in_schema=False)
+    def serve_mobile_ui():
+        return FileResponse(os.path.join(WEB_DIR, "mobile.html"))
+
+    @app.get("/mobile.css", include_in_schema=False)
+    def serve_mobile_css():
+        return FileResponse(os.path.join(WEB_DIR, "mobile.css"))
+
+    @app.get("/mobile.js", include_in_schema=False)
+    def serve_mobile_js():
+        return FileResponse(os.path.join(WEB_DIR, "mobile.js"))
+
     @app.get("/style.css", include_in_schema=False)
     def serve_css():
         return FileResponse(os.path.join(WEB_DIR, "style.css"))
@@ -866,6 +879,65 @@ if os.path.exists(WEB_DIR):
     @app.get("/app.js", include_in_schema=False)
     def serve_js():
         return FileResponse(os.path.join(WEB_DIR, "app.js"))
+
+class AutocorrectRequest(BaseModel):
+    text: str = Field(..., description="Raw spoken text to clean and autocorrect")
+
+@app.post("/api/text/autocorrect", tags=["Audio Pipeline"])
+def autocorrect_api(req: AutocorrectRequest):
+    """
+    **Speech Autocorrector & Filler-Word Removal**
+    Strips disfluencies (um, uh, like) and normalizes mispronounced oncology terms (inlexo -> INLEXZO®).
+    """
+    import re
+    FILLER_REGEX = re.compile(r'\b(um+|uh+|er+|ah+|eh+|hmm+|like|you know|i mean|basically|actually|honestly|literally|so yeah|right\?)\b[,.]?', re.IGNORECASE)
+    STUTTER_REGEX = re.compile(r'\b([a-zA-Z]+)\s+\1\b', re.IGNORECASE)
+    ONCOLOGY_REPLACEMENTS = [
+        (re.compile(r'\b(inlexo|inlexzo|in\s+lex\s+so|inlezzo|inlexio|inlex|in\s*lexo)\b', re.IGNORECASE), "INLEXZO®"),
+        (re.compile(r'\b(ribrevant|rye\s+brevant|ribrevont|rybreven|rybrevent|rye\s+breva|ribrevan)\b', re.IGNORECASE), "RYBREVANT®"),
+        (re.compile(r'\b(lazcluze|lascluze|laz\s+cruise|lazcluz|las\s+cruise|lascluz|laz\s+cluse)\b', re.IGNORECASE), "LAZCLUZE®"),
+        (re.compile(r'\b(amivantamab|amivantimab|ami\s+vantamab|amivanta)\b', re.IGNORECASE), "amivantamab"),
+        (re.compile(r'\b(lazertinib|laser\s+tinib|lazertanib)\b', re.IGNORECASE), "lazertinib"),
+        (re.compile(r'\b(n\s*m\s*i\s*b\s*c|non\s+muscle\s+invasive\s+bladder\s+cancer)\b', re.IGNORECASE), "NMIBC"),
+        (re.compile(r'\b(n\s*s\s*c\s*l\s*c|non\s+small\s+cell\s+lung\s+cancer)\b', re.IGNORECASE), "NSCLC"),
+        (re.compile(r'\b(b\s*c\s*g|b\.c\.g\.)\s*(unresponsive|refractory)?\b', re.IGNORECASE), "BCG-unresponsive"),
+        (re.compile(r'\b(prior\s+auto|prior\s+oz|pa\s+delay|p\s+a\s+delay|prior\s+auth)\b', re.IGNORECASE), "prior authorization"),
+        (re.compile(r'\b(t\s*u\s*r\s*b\s*t|trans\s*urethral\s+resection)\b', re.IGNORECASE), "TURBT"),
+        (re.compile(r'\b(cystoscopy|sistoscopy|cysto)\b', re.IGNORECASE), "cystoscopy"),
+        (re.compile(r'\b(bio\s*marker|biomarkers)\b', re.IGNORECASE), "biomarker testing"),
+        (re.compile(r'\b(hub\s+enrolment|hub\s+enroll)\b', re.IGNORECASE), "hub enrollment"),
+        (re.compile(r'\b(copay\s+card|copay\s+assistance|co\s*pay)\b', re.IGNORECASE), "copay assistance"),
+    ]
+    raw_text = req.text
+    text = raw_text.strip()
+    fillers = []
+    corrections = []
+    for m in FILLER_REGEX.finditer(text):
+        f = m.group(0).strip(" ,.")
+        if f and f.lower() not in [x.lower() for x in fillers]:
+            fillers.append(f)
+    text = FILLER_REGEX.sub(" ", text)
+    text = STUTTER_REGEX.sub(r"\1", text)
+    for pattern, repl in ONCOLOGY_REPLACEMENTS:
+        matches = pattern.findall(text)
+        if matches:
+            for match_item in matches:
+                m_str = match_item if isinstance(match_item, str) else match_item[0]
+                if m_str and m_str.lower() != repl.lower():
+                    corrections.append({"from": m_str, "to": repl})
+            text = pattern.sub(repl, text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    if text:
+        text = text[0].upper() + text[1:]
+        if not text.endswith(('.', '?', '!')):
+            text += '.'
+    return {
+        "raw": raw_text,
+        "cleaned": text,
+        "fillers_removed": fillers,
+        "corrections": corrections,
+        "has_changes": text != raw_text
+    }
 
 if __name__ == "__main__":
     import uvicorn
