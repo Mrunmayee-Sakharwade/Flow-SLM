@@ -91,14 +91,14 @@ WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 # ---------------------------------------------------------------------------
 class NewSessionRequest(BaseModel):
     role: str = Field(
-        default="FRM", 
+        default="OS", 
         description="Active Field Persona Role", 
-        examples=["FRM", "OS"]
+        examples=["OS"]
     )
     brand: str = Field(
-        default="RYBREVANT", 
+        default="INLEXZO", 
         description="Oncology Product Focus", 
-        examples=["RYBREVANT", "INLEXZO", "RYBREVANT + LAZCLUZE"]
+        examples=["INLEXZO", "RYBREVANT", "RYBREVANT + LAZCLUZE"]
     )
     user_name: Optional[str] = Field(
         default=None,
@@ -108,7 +108,7 @@ class NewSessionRequest(BaseModel):
     account_name: Optional[str] = Field(
         default=None,
         description="Pre-selected target healthcare account",
-        examples=["Apollo Hospitals"]
+        examples=["Atlantic Urology Associates"]
     )
     generate_audio: Optional[bool] = Field(
         default=True,
@@ -437,20 +437,26 @@ def get_kg_info():
 @app.get("/api/accounts/barriers", tags=["Account Intelligence"])
 def get_account_barriers():
     """
-    Returns the manager-provided Account Barrier profiles across major healthcare accounts
-    (Apollo Hospitals, Fortis Healthcare, Manipal Hospitals, Max Healthcare, Narayana Health)
-    for OS (Patient Identification Barriers) and FRM (Market Access Barriers).
+    Returns the manager-provided Account Barrier profiles across the 8 oncology accounts
+    (Atlantic Urology Associates, Capital Bladder Cancer Center, Central Ohio Urology,
+    Northside Urology Group, Regional Urology Institute, Summit Urologic Oncology,
+    Temple Urology Clinic, Valley Urology Specialists) for the OS role.
     """
+    barriers = bot.kg.account_barriers if hasattr(bot.kg, "account_barriers") else []
+    accounts = sorted(list(set(b["account"] for b in barriers if "account" in b))) if barriers else [
+        "Atlantic Urology Associates",
+        "Capital Bladder Cancer Center",
+        "Central Ohio Urology",
+        "Northside Urology Group",
+        "Regional Urology Institute",
+        "Summit Urologic Oncology",
+        "Temple Urology Clinic",
+        "Valley Urology Specialists"
+    ]
     return {
         "status": "SUCCESS",
-        "accounts": [
-            "Apollo Hospitals",
-            "Fortis Healthcare",
-            "Manipal Hospitals",
-            "Max Healthcare",
-            "Narayana Health"
-        ],
-        "barriers": bot.kg.account_barriers if hasattr(bot.kg, "account_barriers") else []
+        "accounts": accounts,
+        "barriers": barriers
     }
 
 @app.post("/api/slm/explain_context", tags=["SLM Explainability"])

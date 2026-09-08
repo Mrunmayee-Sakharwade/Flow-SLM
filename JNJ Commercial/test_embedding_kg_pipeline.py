@@ -1,10 +1,11 @@
 """
 test_embedding_kg_pipeline.py
-Dedicated Test Suite for Dynamic Knowledge Graph Embedding Integration:
+==============================
+Dedicated Test Suite for Dynamic Knowledge Graph Embedding Integration (OS Scoped):
 1. Dynamic KG Context Keeping & Intent Retrieval for Novel/Arbitrary Utterances
 2. Telemetry Verification: TTFT (ms), TRT (ms), generated_tokens, num_tokens, tokens_per_second
 3. Case 1 & Case 2 Account Friction Context Integration with Dynamic KG Matching
-4. Personas Context (OS vs FRM) & Regulatory Scope Enforcement
+4. Persona Context (OS / INLEXZO) & Regulatory Scope Enforcement
 5. Streaming Turn (process_turn_stream) Metrics Verification
 """
 
@@ -15,7 +16,7 @@ from engine.kg_context_retriever import KGContextRetriever
 
 def test_dynamic_embedding_kg():
     print("=" * 80)
-    print("DYNAMIC EMBEDDING KNOWLEDGE GRAPH & TELEMETRY VALIDATION SUITE")
+    print("DYNAMIC EMBEDDING KNOWLEDGE GRAPH & TELEMETRY VALIDATION SUITE (OS)")
     print("=" * 80)
 
     bot = RuleGovernedCallBot()
@@ -23,14 +24,14 @@ def test_dynamic_embedding_kg():
     # -------------------------------------------------------------------------
     # Test 1: Telemetry Verification on Standard Turn
     # -------------------------------------------------------------------------
-    print("\n--- Test 1: Telemetry Verification (TTFT, TRT, Token Counts) ---")
-    sess1 = bot.create_session(role="OS", brand="INLEXZO", account_name="Apollo Hospitals")
+    print("\n--- Test 1: Telemetry Verification (TTFT, TRT, Tokens) ---")
+    sess1 = bot.create_session(role="OS", brand="INLEXZO", account_name="Atlantic Urology Associates")
     res1 = bot.process_turn(
         sess1.session_id,
-        "We reviewed the patient selection criteria with Dr. Anurag today."
+        "We reviewed the patient selection criteria for BCG-unresponsive NMIBC with Dr. Robert Patel today."
     )
 
-    print(f"User utterance: 'We reviewed the patient selection criteria with Dr. Anurag today.'")
+    print(f"User utterance: 'We reviewed the patient selection criteria for BCG-unresponsive NMIBC...'")
     print(f"Predicted Question: {res1['bot_message']}")
     print(f"Telemetry metrics:")
     print(f"  - ttft_ms          : {res1.get('ttft_ms')} ms")
@@ -57,15 +58,15 @@ def test_dynamic_embedding_kg():
     # -------------------------------------------------------------------------
     print("\n--- Test 2: Dynamic Semantic Intent Retrieval on Unscripted Input ---")
     unscripted_cases = [
-        ("FRM", "RYBREVANT", "Apollo Hospitals", 
-         "I met with Lisa at Apollo Hospitals. The insurance reviewer asked for additional clinical notes before they approve coverage.",
-         ["prior authorization", "appeal", "documentation", "turnaround", "hurdles", "RYBREVANT", "access"]),
-        ("FRM", "RYBREVANT", "Apollo Hospitals",
-         "I met billing staff at Apollo Hospitals. The patient has a very high out-of-pocket cost and cannot afford the monthly copay.",
-         ["copay", "cost", "affordability", "patient support", "assistance", "access", "program"]),
-        ("OS", "INLEXZO", "Apollo Hospitals",
-         "I met Dr. Anurag at Apollo Hospitals. Can we circle back with him in two weeks after their multidisciplinary tumor board?",
-         ["two weeks", "follow-up", "tumor board", "discussion", "touchpoint", "action", "flagging", "anurag"])
+        ("OS", "INLEXZO", "Atlantic Urology Associates", 
+         "I met with Dr. Robert Patel at Atlantic Urology. The clinic is rechecking coverage policy guidelines before setting insertion dates.",
+         ["coverage", "benefits", "rechecking", "patient", "scheduling", "inlexzo", "patel"]),
+        ("OS", "INLEXZO", "Northside Urology Group",
+         "I met Dr. Sarah Jenkins at Northside Urology. The PA submission is currently in process with the insurer.",
+         ["prior authorization", "pa", "approval", "clears", "status", "jenkins", "inlexzo"]),
+        ("OS", "INLEXZO", "Capital Bladder Cancer Center",
+         "I met Dr. Marcus Vance at Capital Bladder Cancer Center. The hospital P&T committee meets next month to evaluate formulary placement.",
+         ["p&t", "committee", "timing", "deductible", "vance", "inlexzo", "formulary"])
     ]
 
     for role, brand, acc, user_text, expected_keywords in unscripted_cases:
@@ -85,10 +86,10 @@ def test_dynamic_embedding_kg():
     # Test 3: Streaming Telemetry Verification (process_turn_stream)
     # -------------------------------------------------------------------------
     print("\n--- Test 3: Streaming Telemetry Verification ---")
-    sess_stream = bot.create_session(role="FRM", brand="RYBREVANT", account_name="Max Healthcare")
+    sess_stream = bot.create_session(role="OS", brand="INLEXZO", account_name="Valley Urology Specialists")
     stream_generator = bot.process_turn_stream(
         sess_stream.session_id,
-        "I met the pharmacy director at Max Healthcare. We checked the status of the formulary review with the pharmacy committee."
+        "I met Dr. Lisa Wong at Valley Urology Specialists. We reviewed anatomical model prep and procedure setup."
     )
 
     tokens = []
@@ -117,30 +118,28 @@ def test_dynamic_embedding_kg():
     print(" [PASS] Streaming telemetry (TTFT, TRT, token counts) successfully emitted!")
 
     # -------------------------------------------------------------------------
-    # Test 4: Dynamic Account Barrier Matching via Embeddings
+    # Test 4: Dynamic Account Barrier Matching via MedEmbed
     # -------------------------------------------------------------------------
     print("\n--- Test 4: Dynamic Account Barrier Semantic Matching ---")
     retriever = KGContextRetriever()
     assert retriever.embedder is not None, "KGEmbeddingEngine not attached to retriever"
 
     # Test arbitrary barrier description matching
-    match_apollo = retriever.embedder.match_account_barrier(
-        "Our hospital staff has trouble operationalizing which patients qualify for the therapy pathway",
-        account_name="Apollo Hospitals",
+    match_atl = retriever.embedder.match_account_barrier(
+        "Recent coverage changes caused billing uncertainty and we need benefits verification before scheduling",
+        account_name="Atlantic Urology Associates",
         role="OS"
     )
-    assert match_apollo is not None, "Failed to match Apollo OS barrier via embeddings"
-    assert match_apollo["barrier_type"] == "Patient Identification Barrier"
-    print(f" [PASS] Apollo OS Barrier matched with semantic score: {match_apollo.get('semantic_score')}")
+    assert match_atl is not None, "Failed to match Atlantic Urology barrier via embeddings"
+    print(f" [PASS] Atlantic Urology Barrier matched with semantic score: {match_atl.get('semantic_score')}")
 
-    match_max = retriever.embedder.match_account_barrier(
-        "Pharmacy leadership noted product is restricted from the formulary and needs committee exception",
-        account_name="Max Healthcare",
-        role="FRM"
+    match_northside = retriever.embedder.match_account_barrier(
+        "Prior authorization submissions are currently in process with payers and calendar booking is blocked",
+        account_name="Northside Urology Group",
+        role="OS"
     )
-    assert match_max is not None, "Failed to match Max FRM barrier via embeddings"
-    assert match_max["barrier_type"] == "Market Access Barrier"
-    print(f" [PASS] Max FRM Barrier matched with semantic score: {match_max.get('semantic_score')}")
+    assert match_northside is not None, "Failed to match Northside Urology barrier via embeddings"
+    print(f" [PASS] Northside Urology Barrier matched with semantic score: {match_northside.get('semantic_score')}")
 
     print("\n" + "=" * 80)
     print("ALL DYNAMIC EMBEDDING KG & TELEMETRY TESTS PASSED PERFECTLY!")

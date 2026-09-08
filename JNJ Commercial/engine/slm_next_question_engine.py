@@ -39,7 +39,7 @@ STOP_WORDS = {
 class SLMNextQuestionEngine:
     def __init__(
         self,
-        kg_path: str = "Persona_Solid_Cancer_OS_FRM.json",
+        kg_path: str = "kg_os.json",
         model_name: Optional[str] = None,
         use_local_weights: bool = False,
         backend: str = "vllm"
@@ -276,7 +276,8 @@ class SLMNextQuestionEngine:
         )
         
         target_topic = kg_context["target_topic"]
-        brand = entities.get("brands", ["RYBREVANT"])[0] if entities.get("brands") else "RYBREVANT"
+        default_role_brand = "INLEXZO" if role_upper == "OS" else "RYBREVANT"
+        brand = entities.get("brands", [default_role_brand])[0] if entities.get("brands") else default_role_brand
         hcp = entities.get("hcps", ["the doctor"])[0] if entities.get("hcps") else "the doctor"
         
         # STEP 2: Execute Generative Prediction
@@ -322,7 +323,7 @@ class SLMNextQuestionEngine:
         role: str,
         current_state: str,
         candidate_answer: str,
-        brand: str = "RYBREVANT",
+        brand: Optional[str] = None,
         persona_name: Optional[str] = None,
         conversation_history: Optional[List[Dict[str, str]]] = None,
         extracted_entities: Optional[Dict[str, Any]] = None,
@@ -345,9 +346,10 @@ class SLMNextQuestionEngine:
         topics = detected_topics or []
 
         # Resolve brand and persona from entities if not explicitly provided
+        default_role_brand = "INLEXZO" if role_upper == "OS" else "RYBREVANT"
         if not brand and entities.get("brands"):
             brand = entities["brands"][0]
-        brand = brand or "RYBREVANT"
+        brand = brand or default_role_brand
 
         account = entities.get("accounts", [None])[0] if entities.get("accounts") else None
 
@@ -486,7 +488,7 @@ class SLMNextQuestionEngine:
         role: str,
         current_state: str,
         candidate_answer: str,
-        brand: str = "RYBREVANT",
+        brand: Optional[str] = None,
         persona_name: Optional[str] = None,
         conversation_history: Optional[List[Dict[str, str]]] = None,
         extracted_entities: Optional[Dict[str, Any]] = None,
@@ -502,9 +504,10 @@ class SLMNextQuestionEngine:
         covered = covered_topics or set()
         topics = detected_topics or []
 
+        default_role_brand = "INLEXZO" if role_upper == "OS" else "RYBREVANT"
         if not brand and entities.get("brands"):
             brand = entities["brands"][0]
-        brand = brand or "RYBREVANT"
+        brand = brand or default_role_brand
 
         account = entities.get("accounts", [None])[0] if entities.get("accounts") else None
 
@@ -892,7 +895,7 @@ class SLMNextQuestionEngine:
         candidate_answer: str = "",
         extracted_entities: Optional[Dict[str, Any]] = None,
         conversation_history: Optional[List[Dict[str, str]]] = None,
-        brand: str = "RYBREVANT",
+        brand: Optional[str] = None,
         kg_fallback: Optional[str] = None
     ) -> str:
         """
@@ -900,6 +903,9 @@ class SLMNextQuestionEngine:
         contains zero ungrounded entity hallucinations, and adheres strictly to J&J guidelines.
         Also intercepts SLM-generated compliance refusals and meta-text artifacts that come from training data contamination.
         """
+        role_upper = role.upper()
+        default_role_brand = "INLEXZO" if role_upper == "OS" else "RYBREVANT"
+        brand = brand or default_role_brand
         ans_lower = (candidate_answer or "").strip().lower()
         is_greeting_ack = bool(re.match(r'^(yes|yeah|sure|yep|ok|okay|hi|hello|ready|start)[.!]?$', ans_lower, re.IGNORECASE))
         is_neg = bool(re.match(r'^(no|nope|nah|not really|none)[.!]?$', ans_lower, re.IGNORECASE))
@@ -934,11 +940,13 @@ class SLMNextQuestionEngine:
                     break
         if known_hcp:
             def _sub_hcp(match):
-                found = match.group(0)
+                found = match.group(0).strip()
                 if found.lower().replace(".", "") == known_hcp.lower().replace(".", ""):
                     return found
                 return known_hcp
-            question_text = re.sub(r'\bDr\.?\s+[A-Z][a-z]+\b', _sub_hcp, question_text)
+            question_text = re.sub(r'\bDr\.?\s+[A-Za-z]+(?:\s+[A-Za-z]+)?\b', _sub_hcp, question_text)
+            # Remove any duplicate adjacent word (e.g. Patel Patel)
+            question_text = re.sub(r'\b([A-Za-z]+)\s+\1\b', r'\1', question_text)
 
         # Rule 1: Toxicity Terminology Replacement
         question_text = re.sub(r'\btoxicity\b', 'safety concern', question_text, flags=re.IGNORECASE)
@@ -956,7 +964,7 @@ class SLMNextQuestionEngine:
             "what", "who", "when", "where", "why", "how", "which", "whom", "whose",
             "did", "do", "does", "was", "were", "is", "are", "can", "could",
             "would", "should", "have", "has", "had", "will", "any", "shall", "may",
-            "i have enough"
+            "i have enough", "given", "with", "regarding", "since", "for"
         )
         first_word = q_stripped.split()[0].lower() if q_stripped.split() else ""
         not_a_question = first_word not in valid_question_starters
@@ -1030,7 +1038,8 @@ class SLMNextQuestionEngine:
 
         # Rule 2.5: Re-enforce entity replacement in case fallback was used
         if known_hcp:
-            question_text = re.sub(r'\bDr\.?\s+[A-Z][a-z]+\b', known_hcp, question_text)
+            question_text = re.sub(r'\bDr\.?\s+[A-Za-z]+(?:\s+[A-Za-z]+)?\b', _sub_hcp, question_text)
+            question_text = re.sub(r'\b([A-Za-z]+)\s+\1\b', r'\1', question_text)
 
         # Rule 3: Ensure proper question punctuation
         question_text = question_text.strip()

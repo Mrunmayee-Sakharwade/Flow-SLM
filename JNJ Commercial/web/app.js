@@ -341,7 +341,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!accountName) {
       accountIntelContent.innerHTML = `
         <div style="color: var(--text-muted); font-size: 12px; font-style: italic; padding: 10px 0;">
-          Select a target account above (e.g. Apollo Hospitals) or mention it during your conversation to load historical friction and blocker intelligence.
+          Select a target account above (e.g. Atlantic Urology Associates) or mention it during your conversation to load historical friction and blocker intelligence.
         </div>
       `;
       return;
@@ -351,7 +351,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const matches = accountBarriers.filter(b => {
       const bAcc = b.account.toLowerCase();
       return bAcc.includes(accLow) || accLow.includes(bAcc) ||
-             ["apollo", "fortis", "manipal", "max", "narayana"].some(k => accLow.includes(k) && bAcc.includes(k));
+             ["atlantic", "capital", "central ohio", "northside", "regional", "summit", "temple", "valley"].some(k => accLow.includes(k) && bAcc.includes(k));
     });
 
     if (!matches.length) {

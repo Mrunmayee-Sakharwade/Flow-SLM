@@ -37,7 +37,7 @@ from engine.dialogue_state_tracker import DialogueSession
 class RuleGovernedCallBot:
     def __init__(
         self,
-        kg_path: str = "Persona_Solid_Cancer_OS_FRM.json"
+        kg_path: str = "kg_os.json"
     ):
         print("Initializing Knowledge Graph Rule Engine...")
         self.kg = KGRuleEngine(kg_json_path=kg_path)
@@ -242,35 +242,46 @@ class RuleGovernedCallBot:
                 "session_summary": session.get_summary()
             })
 
-        # STEP 1.9: Role Scope & Regulatory Exclusion Check (Grounded in Knowledge Graph)
-        scope_res = self.kg.evaluate_role_scope(session.role, detected_topics, candidate_answer)
-        boundary_check = {"is_violation": False}
-        if not scope_res.get("is_in_scope", True):
-            is_scope_violation = True
-        elif getattr(self.kg_retriever, "embedder", None):
-            boundary_check = self.kg_retriever.embedder.check_scope_boundary(candidate_answer, role=session.role, threshold=0.52)
-            is_in_scope_topic = any(t in ["payer coverage", "reimbursement", "prior authorization", "patient access", "affordability patient support"] for t in detected_topics)
-            is_scope_violation = boundary_check.get("is_violation", False) and not (
-                is_in_scope_topic and boundary_check.get("similarity_score", 0) < 0.65
+        # STEP 1.9: Hybrid Two-Tier Compliance Gate (Deterministic Fast-Path + MedEmbed Backstop)
+        # Evaluated strictly BEFORE any SLM generation; bypasses SLM immediately upon violation.
+        gate_res = {"gate_triggered": False, "static_weight": 0.30, "dynamic_weight": 0.70}
+        if getattr(self.kg_retriever, "embedder", None):
+            gate_res = self.kg_retriever.embedder.evaluate_compliance_gate(
+                candidate_answer, role=session.role, semantic_threshold=0.58
             )
-        else:
-            is_scope_violation = False
+
+        scope_res = self.kg.evaluate_role_scope(session.role, detected_topics, candidate_answer)
+        is_scope_violation = gate_res.get("gate_triggered", False) or (not scope_res.get("is_in_scope", True))
         
         if is_scope_violation:
             latency_ms = round((time.perf_counter() - t_start) * 1000, 1)
-            if scope_res.get("violations"):
-                v = scope_res["violations"][0]
+            if gate_res.get("gate_triggered"):
+                rule_id = gate_res.get("matched_rule", f"resp:{session.role}:scope")
+                rule_text = gate_res.get("rule_text", f"Prohibited regulatory exclusion for {session.role}.")
+                redirect_msg = gate_res.get("compliance_question")
+                tier = gate_res.get("tier", "TIER_1_LEXICON")
+                sim_score = gate_res.get("similarity_score", 1.0)
+            else:
+                v = scope_res["violations"][0] if scope_res.get("violations") else {}
                 rule_id = v.get("rule_id", f"resp:{session.role}:scope")
                 rule_text = v.get("rule_text", f"Discussions on this topic are outside the {session.role} commercial scope.")
-            else:
-                rule_id = boundary_check.get("matched_rule", f"resp:{session.role}:scope")
-                rule_text = boundary_check.get("rule_text", f"This discussion is outside the permitted regulatory scope for {session.role}.")
-            
-            if session.role.upper() == "FRM":
-                redirect_msg = f"As a Field Reimbursement Manager, discussing clinical trial efficacy, biomarkers, or medical protocols is outside your regulatory scope ({rule_id}). Please redirect clinical questions to the Medical Affairs/MSL team. Let's return to reimbursement, payer coverage, or access support."
-            else:
+                tier = "TIER_1_LEXICON"
+                sim_score = 1.0
+                if session.role.upper() == "FRM":
+                    redirect_msg = (
+                        "Under J&J commercial compliance guidelines, clinical trial efficacy, survival curves, "
+                        "and biomarker data must be addressed by Medical Affairs. Did you inform the physician "
+                        "that an MSL will follow up through a formal Medical Information Request (MIR)?"
+                    )
+                else:
+                    redirect_msg = (
+                        "Commercial sales representatives cannot provide guidance on clinical side-effect management "
+                        "or dose modifications. Did you report this safety concern to Medical Safety for formal triage?"
+                    )
+
+            if not redirect_msg:
                 redirect_msg = f"This topic is outside the permitted commercial scope for {session.role} ({rule_id}). Let's refocus on appropriate commercial objectives."
-            
+
             gen_tokens = len(redirect_msg.split())
             metrics = {
                 "type": "metrics",
@@ -289,8 +300,14 @@ class RuleGovernedCallBot:
                 "rule_text": rule_text,
                 "current_state": session.current_state,
                 "bot_message": redirect_msg,
+                "compliance_question": redirect_msg,
                 "is_completed": False,
                 "slots": session.slots,
+                "static_weight": 1.0,
+                "dynamic_weight": 0.0,
+                "compliance_override": True,
+                "tier": tier,
+                "similarity_score": sim_score,
                 "latency_ms": latency_ms,
                 "trt_ms": latency_ms,
                 "ttft_ms": latency_ms,
@@ -306,10 +323,10 @@ class RuleGovernedCallBot:
         ans_clean = candidate_answer.strip()
         ans_lower = ans_clean.lower()
         curr_q = session.current_question or ""
-        is_asking_wrap = bool(re.search(r'\b(wrap(\s*up|\s*here)?|close\s*out|enough for the call note)\b', curr_q, re.IGNORECASE))
+        is_asking_wrap = bool(re.search(r'\b(wrap(\s*up|\s*here)?|close\s*out|enough for the call note|any\s*other|anything\s*else|any\s*further)\b', curr_q, re.IGNORECASE))
         is_greeting_refusal = (session.current_state == "STATE_0_GREETING_INITIATION" and bool(re.match(r'^(no|not now|busy|don\'?t have time|no time|later)[.!]?$', ans_lower)))
-        is_explicit_stop = bool(re.search(r'\b(close\s*(out)?\s*(the|this)?\s*call\s*note|close\s*note|end\s*(the)?\s*(call|session|interview)|stop\s*session|quit\s*note|wrap\s*(it|up|this)|please\s*wrap|wrap\s*up)\b', ans_lower))
-        is_affirmative = bool(re.search(r'\b(yes|yeah|sure|yep|ok|okay|wrap(\s*it|\s*up)?|close(\s*it)?|go\s*ahead|done|all\s*set|please|we\s*can)\b', ans_lower))
+        is_explicit_stop = bool(re.search(r'\b(close\s*(out)?\s*(the|this)?\s*call\s*note|close\s*note|end\s*(the)?\s*(call|session|interview)|stop\s*session|quit\s*note|wrap\s*(it|up|this)|please\s*wrap|wrap\s*up|nothing\s*else|that\'?s\s*all|no\s*more|all\s*good)\b', ans_lower))
+        is_affirmative = bool(re.search(r'\b(yes|yeah|sure|yep|ok|okay|wrap(\s*it|\s*up)?|close(\s*it)?|go\s*ahead|done|all\s*set|please|we\s*can|no|nothing|none|all\s*good|that\'?s\s*all)\b', ans_lower))
         is_wrap_up_confirmation = (is_asking_wrap or session.current_state == "STATE_7_WRAP_UP_CONFIRMATION") and is_affirmative
 
         if is_greeting_refusal or is_explicit_stop or is_wrap_up_confirmation:
@@ -352,7 +369,8 @@ class RuleGovernedCallBot:
         # Get cumulative conversation transcript for flat prompt injection
         conversation_history = session.history if session.history else None
         
-        brand = session.slots.get("brand") or (detected_entities.get("brands")[0] if detected_entities.get("brands") else None)
+        default_role_brand = "INLEXZO" if session.role.upper() == "OS" else "RYBREVANT"
+        brand = session.slots.get("brand") or (detected_entities.get("brands")[0] if detected_entities.get("brands") else None) or default_role_brand
         persona_name = session.slots.get("hcp_name") or (detected_entities.get("hcps")[0] if detected_entities.get("hcps") else None)
         canonical_accounts = ["Apollo Hospitals", "Fortis Healthcare", "Manipal Hospitals", "Max Healthcare", "Narayana Health"]
         has_new_canonical = any(acc in canonical_accounts for acc in detected_entities.get("accounts", []))
@@ -363,7 +381,7 @@ class RuleGovernedCallBot:
             role=session.role,
             current_state=curr_state,
             candidate_answer=candidate_answer,
-            brand=brand or "RYBREVANT",
+            brand=brand,
             persona_name=persona_name,
             conversation_history=conversation_history,
             extracted_entities=detected_entities,
@@ -442,6 +460,9 @@ class RuleGovernedCallBot:
         return _format_result({
             "status": "SUCCESS",
             "role": session.role,
+            "static_weight": 0.30,
+            "dynamic_weight": 0.70,
+            "compliance_override": False,
             "current_state": curr_state,
             "next_state": session.current_state,
             "bot_message": next_q,
@@ -627,33 +648,44 @@ class RuleGovernedCallBot:
             })
             return
 
-        # STEP 1.9: Role Scope & Regulatory Exclusion Check (Grounded in Knowledge Graph)
-        scope_res = self.kg.evaluate_role_scope(session.role, detected_topics, candidate_answer)
-        boundary_check = {"is_violation": False}
-        if not scope_res.get("is_in_scope", True):
-            is_scope_violation = True
-        elif getattr(self.kg_retriever, "embedder", None):
-            boundary_check = self.kg_retriever.embedder.check_scope_boundary(candidate_answer, role=session.role, threshold=0.52)
-            is_in_scope_topic = any(t in ["payer coverage", "reimbursement", "prior authorization", "patient access", "affordability patient support"] for t in detected_topics)
-            is_scope_violation = boundary_check.get("is_violation", False) and not (
-                is_in_scope_topic and boundary_check.get("similarity_score", 0) < 0.65
+        # STEP 1.9: Hybrid Two-Tier Compliance Gate (Deterministic Fast-Path + MedEmbed Backstop)
+        # Evaluated strictly BEFORE any SLM generation; bypasses SLM immediately upon violation.
+        gate_res = {"gate_triggered": False, "static_weight": 0.30, "dynamic_weight": 0.70}
+        if getattr(self.kg_retriever, "embedder", None):
+            gate_res = self.kg_retriever.embedder.evaluate_compliance_gate(
+                candidate_answer, role=session.role, semantic_threshold=0.58
             )
-        else:
-            is_scope_violation = False
+
+        scope_res = self.kg.evaluate_role_scope(session.role, detected_topics, candidate_answer)
+        is_scope_violation = gate_res.get("gate_triggered", False) or (not scope_res.get("is_in_scope", True))
             
         if is_scope_violation:
             latency_ms = round((time.perf_counter() - t_start) * 1000, 2)
-            if scope_res.get("violations"):
-                v = scope_res["violations"][0]
+            if gate_res.get("gate_triggered"):
+                rule_id = gate_res.get("matched_rule", f"resp:{session.role}:scope")
+                rule_text = gate_res.get("rule_text", f"Prohibited regulatory exclusion for {session.role}.")
+                redirect_msg = gate_res.get("compliance_question")
+                tier = gate_res.get("tier", "TIER_1_LEXICON")
+                sim_score = gate_res.get("similarity_score", 1.0)
+            else:
+                v = scope_res["violations"][0] if scope_res.get("violations") else {}
                 rule_id = v.get("rule_id", f"resp:{session.role}:scope")
                 rule_text = v.get("rule_text", f"Discussions on this topic are outside the {session.role} commercial scope.")
-            else:
-                rule_id = boundary_check.get("matched_rule", f"resp:{session.role}:scope")
-                rule_text = boundary_check.get("rule_text", f"This discussion is outside the permitted regulatory scope for {session.role}.")
-            
-            if session.role.upper() == "FRM":
-                redirect_msg = f"As a Field Reimbursement Manager, discussing clinical trial efficacy, biomarkers, or medical protocols is outside your regulatory scope ({rule_id}). Please redirect clinical questions to the Medical Affairs/MSL team. Let's return to reimbursement, payer coverage, or access support."
-            else:
+                tier = "TIER_1_LEXICON"
+                sim_score = 1.0
+                if session.role.upper() == "FRM":
+                    redirect_msg = (
+                        "Under J&J commercial compliance guidelines, clinical trial efficacy, survival curves, "
+                        "and biomarker data must be addressed by Medical Affairs. Did you inform the physician "
+                        "that an MSL will follow up through a formal Medical Information Request (MIR)?"
+                    )
+                else:
+                    redirect_msg = (
+                        "Commercial sales representatives cannot provide guidance on clinical side-effect management "
+                        "or dose modifications. Did you report this safety concern to Medical Safety for formal triage?"
+                    )
+
+            if not redirect_msg:
                 redirect_msg = f"This topic is outside the permitted commercial scope for {session.role} ({rule_id}). Let's refocus on appropriate commercial objectives."
             
             yield {"type": "token", "token": redirect_msg}
@@ -677,8 +709,14 @@ class RuleGovernedCallBot:
                 "rule_text": rule_text,
                 "current_state": session.current_state,
                 "bot_message": redirect_msg,
+                "compliance_question": redirect_msg,
                 "is_completed": False,
                 "slots": session.slots,
+                "static_weight": 1.0,
+                "dynamic_weight": 0.0,
+                "compliance_override": True,
+                "tier": tier,
+                "similarity_score": sim_score,
                 "metrics": metrics,
                 "latency_ms": latency_ms,
                 "trt_ms": latency_ms,
@@ -695,10 +733,10 @@ class RuleGovernedCallBot:
         ans_clean = candidate_answer.strip()
         ans_lower = ans_clean.lower()
         is_greeting_refusal = (session.current_state == "STATE_0_GREETING_INITIATION" and bool(re.match(r'^(no|not now|busy|don\'?t have time|no time|later)[.!]?$', ans_lower)))
-        is_explicit_stop = bool(re.search(r'\b(close\s*(out)?\s*(the|this)?\s*call\s*note|close\s*note|end\s*(the)?\s*(call|session|interview)|stop\s*session|quit\s*note|wrap\s*(it|up|this)|please\s*wrap|wrap\s*up)\b', ans_lower))
+        is_explicit_stop = bool(re.search(r'\b(close\s*(out)?\s*(the|this)?\s*call\s*note|close\s*note|end\s*(the)?\s*(call|session|interview)|stop\s*session|quit\s*note|wrap\s*(it|up|this)|please\s*wrap|wrap\s*up|nothing\s*else|that\'?s\s*all|no\s*more|all\s*good)\b', ans_lower))
         curr_q = session.current_question or ""
-        is_asking_wrap = bool(re.search(r'\b(wrap(\s*up|\s*here)?|close\s*out|enough for the call note)\b', curr_q, re.IGNORECASE))
-        is_affirmative = bool(re.search(r'\b(yes|yeah|sure|yep|ok|okay|wrap(\s*it|\s*up)?|close(\s*it)?|go\s*ahead|done|all\s*set|please|we\s*can)\b', ans_lower))
+        is_asking_wrap = bool(re.search(r'\b(wrap(\s*up|\s*here)?|close\s*out|enough for the call note|any\s*other|anything\s*else|any\s*further)\b', curr_q, re.IGNORECASE))
+        is_affirmative = bool(re.search(r'\b(yes|yeah|sure|yep|ok|okay|wrap(\s*it|\s*up)?|close(\s*it)?|go\s*ahead|done|all\s*set|please|we\s*can|no|nothing|none|all\s*good|that\'?s\s*all)\b', ans_lower))
         is_wrap_up_confirmation = (is_asking_wrap or session.current_state == "STATE_7_WRAP_UP_CONFIRMATION") and is_affirmative
 
         if is_greeting_refusal or is_explicit_stop or is_wrap_up_confirmation:
@@ -740,7 +778,8 @@ class RuleGovernedCallBot:
 
         # STEP 5: Generate stream from SLM
         curr_state = session.current_state
-        brand = session.slots.get("brand", "RYBREVANT") or "RYBREVANT"
+        default_role_brand = "INLEXZO" if session.role.upper() == "OS" else "RYBREVANT"
+        brand = session.slots.get("brand") or default_role_brand
         hcps_list = detected_entities.get("hcps") or []
         persona_name = session.slots.get("hcp_name") or (hcps_list[0] if hcps_list else None)
         canonical_accounts = ["Apollo Hospitals", "Fortis Healthcare", "Manipal Hospitals", "Max Healthcare", "Narayana Health"]
@@ -801,6 +840,9 @@ class RuleGovernedCallBot:
             "type": "result",
             "status": "SUCCESS",
             "role": session.role,
+            "static_weight": 0.30,
+            "dynamic_weight": 0.70,
+            "compliance_override": False,
             "current_state": curr_state,
             "next_state": session.current_state,
             "bot_message": next_q,

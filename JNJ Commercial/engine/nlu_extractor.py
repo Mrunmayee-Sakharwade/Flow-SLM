@@ -23,16 +23,19 @@ PAYER_TYPES = [
 ]
 
 CANONICAL_ACCOUNTS = {
-    "apollo": "Apollo Hospitals",
-    "fortis": "Fortis Healthcare",
-    "manipal": "Manipal Hospitals",
-    "max": "Max Healthcare",
-    "narayana": "Narayana Health"
+    "atlantic": "Atlantic Urology Associates",
+    "capital": "Capital Bladder Cancer Center",
+    "central ohio": "Central Ohio Urology",
+    "northside": "Northside Urology Group",
+    "regional": "Regional Urology Institute",
+    "summit": "Summit Urologic Oncology",
+    "temple": "Temple Urology Clinic",
+    "valley": "Valley Urology Specialists"
 }
 
 TOPIC_PATTERNS = {
     "account identification": [
-        r"\b(hospital|clinic|cancer\s+center|medical\s+center|health\s+system|health\s+network|institute|account|office|site|practice|infusion\s+center|department|apollo|fortis|manipal|max\s+healthcare|narayana)\b"
+        r"\b(hospital|clinic|cancer\s+center|medical\s+center|health\s+system|health\s+network|institute|account|office|site|practice|infusion\s+center|department|urology|atlantic|capital|central\s+ohio|northside|regional|summit|temple|valley)\b"
     ],
     "stakeholder management": [
         r"\b(dr\.?|doctor|md\b|do\b|oncologist|urologist|nurse|rn|np\b|pa\b|physician|coordinator|manager|staff|team|counselor|specialist|practitioner|administrator)\b"
@@ -138,7 +141,7 @@ class NLUExtractor:
 
         # Canonical Major Healthcare Accounts Matching
         for key, canonical_name in CANONICAL_ACCOUNTS.items():
-            if re.search(r'\b' + re.escape(key) + r'(\s+(?:hospitals?|healthcare|health|clinic|medical))?\b', text, re.IGNORECASE):
+            if re.search(r'\b' + re.escape(key) + r'(\s+(?:urology|associates|clinic|cancer|center|group|institute|specialists|oncology|hospitals?|healthcare|health|medical))?\b', text, re.IGNORECASE):
                 if canonical_name not in entities["accounts"]:
                     entities["accounts"].append(canonical_name)
 

@@ -1,2 +1,3 @@
 JNJ[[:space:]]Commercial/data_prep/slm_train.jsonl filter=lfs diff=lfs merge=lfs -text
 JNJ[[:space:]]Commercial/data_prep/slm_alpaca_dataset.json filter=lfs diff=lfs merge=lfs -text
+JNJ[[:space:]]Commercial/slm_training_package/data/slm_train.jsonl filter=lfs diff=lfs merge=lfs -text

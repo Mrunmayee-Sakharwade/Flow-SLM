@@ -369,7 +369,7 @@ def main():
     parser.add_argument(
         "--kg-path",
         type=str,
-        default="Persona_Solid_Cancer_OS_FRM.json",
+        default="kg_os.json",
         help="Path to the Knowledge Graph JSON file",
     )
     parser.add_argument(

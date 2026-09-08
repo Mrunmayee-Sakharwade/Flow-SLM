@@ -72,14 +72,25 @@ def detect_brand_from_text(text: str) -> Optional[str]:
     return None
 
 
+CANONICAL_ACCOUNTS = [
+    ("atlantic", "Atlantic Urology Associates"),
+    ("capital", "Capital Bladder Cancer Center"),
+    ("central ohio", "Central Ohio Urology"),
+    ("northside", "Northside Urology Group"),
+    ("regional", "Regional Urology Institute"),
+    ("summit", "Summit Urologic Oncology"),
+    ("temple", "Temple Urology Clinic"),
+    ("valley", "Valley Urology Specialists"),
+]
+
+
 class KGContextRetriever:
-    def __init__(self, kg_json_path: str = "Persona_Solid_Cancer_OS_FRM.json"):
+    def __init__(self, kg_json_path: str = "kg_os.json", init_embedder: bool = True):
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         
         # Role-specific Knowledge Graph files
         self.role_kg_files = {
-            "OS": os.path.join(base_dir, "kg_os.json"),
-            "FRM": os.path.join(base_dir, "kg_frm.json")
+            "OS": os.path.join(base_dir, "kg_os.json")
         }
         self.role_kg_data = {}
         for r, p in self.role_kg_files.items():
@@ -152,37 +163,41 @@ class KGContextRetriever:
 
         self._index_graph()
 
-        # Dynamic Knowledge Graph Embedding Engine
-        try:
-            self.embedder = KGEmbeddingEngine(kg_data=self.kg_data, account_barriers=self.account_barriers)
-        except Exception as e:
-            print(f"[Warning] Could not initialize KGEmbeddingEngine: {e}")
+        # Dynamic Knowledge Graph Embedding Engine (optional for batch dataset generation)
+        if init_embedder:
+            try:
+                self.embedder = KGEmbeddingEngine(kg_data=self.kg_data, account_barriers=self.account_barriers)
+            except Exception as e:
+                print(f"[Warning] Could not initialize KGEmbeddingEngine: {e}")
+                self.embedder = None
+        else:
             self.embedder = None
 
-    def get_account_barrier(self, account_name: Optional[str], role: str) -> Optional[Dict[str, Any]]:
+    def get_account_barrier(self, account_name: Optional[str], role: str = "OS") -> Optional[Dict[str, Any]]:
         """
-        Retrieves the account barrier profile for the given account and role.
-        - OS maps to 'Patient Identification Barrier'
-        - FRM maps to 'Market Access Barrier'
+        Retrieves the account barrier profile for the given account from the OS Knowledge Graph.
+        Grounded in the 8 target accounts from the INLEXZO field transcripts.
         """
         if not account_name or not self.account_barriers:
             return None
         
         acc_low = account_name.lower().strip()
-        role_upper = (role or "OS").upper()
-        target_barrier_type = "Patient Identification Barrier" if role_upper == "OS" else "Market Access Barrier"
         
+        # 1. Exact or substring match
         for b in self.account_barriers:
             b_acc = b.get("account", "").lower()
-            if any(k in acc_low and k in b_acc for k in ["apollo", "fortis", "manipal", "max", "narayana"]):
-                if b.get("barrier_type") == target_barrier_type:
-                    return b
-            elif b_acc in acc_low or acc_low in b_acc:
-                if b.get("barrier_type") == target_barrier_type:
-                    return b
+            if b_acc in acc_low or acc_low in b_acc:
+                return b
+
+        # 2. Canonical token match
+        for k, canonical in CANONICAL_ACCOUNTS:
+            if k in acc_low:
+                for b in self.account_barriers:
+                    if canonical.lower() == b.get("account", "").lower():
+                        return b
         return None
 
-    def detect_barrier_mention(self, text: str, account_name: Optional[str], role: str) -> Optional[Dict[str, Any]]:
+    def detect_barrier_mention(self, text: str, account_name: Optional[str], role: str = "OS") -> Optional[Dict[str, Any]]:
         """
         Detects if the rep/HCP explicitly mentions the account barrier in text (Case 1).
         Matches against trigger keywords, key phrases from barrier details, or explicit barrier mentions.
@@ -192,9 +207,7 @@ class KGContextRetriever:
         b = self.get_account_barrier(account_name, role)
         if not b:
             text_low = text.lower()
-            for k, canonical in [("apollo", "Apollo Hospitals"), ("fortis", "Fortis Healthcare"), 
-                                 ("manipal", "Manipal Hospitals"), ("max", "Max Healthcare"), 
-                                 ("narayana", "Narayana Health")]:
+            for k, canonical in CANONICAL_ACCOUNTS:
                 if k in text_low:
                     b = self.get_account_barrier(canonical, role)
                     break
@@ -220,31 +233,29 @@ class KGContextRetriever:
         # Check semantic phrases from barrier details
         details_lower = b.get("barrier_details", "").lower()
         role_upper = (role or "OS").upper()
-        if role_upper == "OS":
-            if any(w in text_lower for w in ["operationalize", "very few eligible", "few eligible", "recognize candidate", "flag candidate", "few patient", "struggling to identify"]):
-                return b
-            if "biomarker" in details_lower and any(w in text_lower for w in ["biomarker", "molecular", "test result", "testing delay", "turnaround"]):
-                return b
-            if "scheduling" in details_lower and any(w in text_lower for w in ["scheduling", "coordination", "diagnosis-to-treatment", "handoff", "routed"]):
-                return b
-            if "diagnostic workup" in details_lower and any(w in text_lower for w in ["diagnostic workup", "internal handoff", "missed handoff", "late in the process"]):
-                return b
-            if "consistently identifying" in details_lower and any(w in text_lower for w in ["consistently identifying", "flag earlier", "burden", "clinic staff"]):
-                return b
-        else: # FRM
-            if "pa turnaround" in details_lower and any(w in text_lower for w in ["pa turnaround", "inconsistent", "access-support", "rework", "prior auth turnaround", "pa delay"]):
-                return b
-            if "cost exposure" in details_lower and any(w in text_lower for w in ["cost exposure", "copay", "co-pay", "benefits verification", "patient cost", "out-of-pocket"]):
-                return b
-            if "scheduling uncertainty" in details_lower and any(w in text_lower for w in ["scheduling uncertainty", "payer typically requests", "approved access pathway", "back-and-forth"]):
-                return b
-            if "formulary" in details_lower and any(w in text_lower for w in ["formulary", "restricted", "exception pathway", "committee timing", "submit the request"]):
-                return b
-            if "payer coverage policy" in details_lower and any(w in text_lower for w in ["policy", "payer coverage", "published policy", "access support channel", "policy update"]):
-                return b
+        if "prior authorization" in details_lower and any(w in text_lower for w in ["pa ", "prior auth", "prior authorization", "pa holdup", "pa is still"]):
+            return b
+        if ("formulary" in details_lower or "p&t" in details_lower) and any(w in text_lower for w in ["formulary", "p&t", "committee", "committee review", "exception"]):
+            return b
+        if "coverage" in details_lower and any(w in text_lower for w in ["coverage", "benefits investigation", "benefits verification", "patient responsibility", "rechecking"]):
+            return b
+        if "deductible" in details_lower and any(w in text_lower for w in ["deductible", "affordability", "payment timing", "payment plan"]):
+            return b
+        if ("prep" in details_lower or "anatomical" in details_lower) and any(w in text_lower for w in ["anatomical", "prep session", "nurse prep", "staff prep", "anatomical model"]):
+            return b
 
-        # Semantic Embedding Match Fallback for arbitrary/unscripted phrasing (ensure utterance is describing friction, not just greeting/intro)
-        if getattr(self, "embedder", None) and len(text.split()) > 6:
+        # Semantic Embedding Match Fallback for arbitrary/unscripted phrasing
+        # Ensure utterance actually describes friction/hurdles/challenges, not just meeting intro / account capture
+        friction_cues = [
+            "barrier", "friction", "delay", "delays", "delayed", "challenge", "challenges",
+            "trouble", "issue", "issues", "problem", "problems", "hurdle", "hurdles",
+            "difficulty", "difficult", "hard", "struggling", "struggle", "uncertain",
+            "uncertainty", "hesitation", "concern", "concerns", "exposure", "rework",
+            "restricted", "exception", "denial", "denials", "appeals", "inconsistent",
+            "late", "slowing", "slow", "timing", "pending", "operationaliz", "eligible"
+        ]
+        has_friction = any(fc in text_lower for fc in friction_cues)
+        if getattr(self, "embedder", None) and has_friction and len(text.split()) >= 4:
             sem_match = self.embedder.match_account_barrier(text, account_name=account_name, role=role_upper, threshold=0.46)
             if sem_match:
                 return sem_match
@@ -281,9 +292,7 @@ class KGContextRetriever:
         if not resolved_account and ent.get("accounts"):
             resolved_account = ent["accounts"][0]
         if not resolved_account:
-            for k, canonical in [("apollo", "Apollo Hospitals"), ("fortis", "Fortis Healthcare"), 
-                                 ("manipal", "Manipal Hospitals"), ("max", "Max Healthcare"), 
-                                 ("narayana", "Narayana Health")]:
+            for k, canonical in CANONICAL_ACCOUNTS:
                 if k in hist_text:
                     resolved_account = canonical
                     break
@@ -586,15 +595,20 @@ class KGContextRetriever:
             elif label == "Topic":
                 tname = props.get("name")
                 self.topics[tname] = props
+            elif label == "Account":
+                self.accounts[props.get("name", nid)] = props
+            elif label == "AccountBarrier":
+                if props not in self.account_barriers:
+                    self.account_barriers.append(props)
             elif label == "ComplianceRule":
                 self.compliance_rules.append(props)
             elif label == "CoreResponsibility":
-                if "OS" in nid:
+                if "OS" in nid or "os" in nid.lower():
                     self.core_responsibilities["OS"].append(props)
                 elif "FRM" in nid:
                     self.core_responsibilities["FRM"].append(props)
             elif label == "ExclusionRule":
-                if "OS" in nid:
+                if "OS" in nid or "os" in nid.lower():
                     self.exclusion_rules["OS"].append(props)
                 elif "FRM" in nid:
                     self.exclusion_rules["FRM"].append(props)
@@ -790,7 +804,7 @@ class KGContextRetriever:
         target_topic: str,
         conversation_history=None,
         candidate_answer: str = "",
-        brand: str = "INLEXZO",
+        brand: Optional[str] = None,
         hcp: str = "the doctor",
         account: Optional[str] = None
     ) -> str:
@@ -823,17 +837,19 @@ class KGContextRetriever:
         hist_text = " ".join([h.get("text", "") for h in (conversation_history or [])]).lower()
         has_known_hcp = any(w in hist_text or w in cand_lower for w in ["dr.", "dr ", "doctor"])
 
+        default_role_brand = "INLEXZO" if role_upper == "OS" else "RYBREVANT"
         if any(w in (cand_lower + " " + hist_text) for w in ["nmibc", "bladder", "bcg", "anurag", "apollo"]) or (brand and "inlexzo" in brand.lower()):
             brand_name = "INLEXZO"
+        elif any(w in (cand_lower + " " + hist_text) for w in ["nsclc", "lung", "egfr", "exon 20", "amivantamab", "lazcluze"]) or (brand and "rybrevant" in brand.lower()):
+            brand_name = "RYBREVANT"
         else:
-            brand_name = brand or "INLEXZO"
+            brand_name = brand or default_role_brand
 
         resolved_account = account
-        canonical_accounts = [("apollo", "Apollo Hospitals"), ("fortis", "Fortis Healthcare"), ("manipal", "Manipal Hospitals"), ("max", "Max Healthcare"), ("narayana", "Narayana Health")]
-        is_canonical = any(c[1].lower() in (resolved_account or "").lower() for c in canonical_accounts)
+        is_canonical = any(c[1].lower() in (resolved_account or "").lower() for c in CANONICAL_ACCOUNTS)
         if not is_canonical:
             full_context = cand_lower + " " + hist_text
-            for k, canonical in canonical_accounts:
+            for k, canonical in CANONICAL_ACCOUNTS:
                 if k in full_context:
                     resolved_account = canonical
                     break
@@ -866,42 +882,17 @@ class KGContextRetriever:
                 return "Who did you meet with, and where?"
 
             # 1. User answered Who/Where (Account Identification) -> Immediate Barrier Validation
-            if any(w in cand_lower for w in ["dr.", "dr ", "doctor", "apollo", "hospital", "clinic", "center"]) and not any("discussion" in q or "purpose" in q for q in prior_ai):
+            if any(w in cand_lower for w in ["dr.", "dr ", "doctor", "urology", "hospital", "clinic", "center", "atlantic", "capital", "northside", "summit", "valley", "temple", "regional", "central ohio"]) and not any("discussion" in q or "purpose" in q for q in prior_ai):
                 display_hcp = hcp_name if (has_known_hcp or (hcp_name and hcp_name != "the doctor")) else None
                 # Inject role-specific account barrier validation into the first substantive question
                 if acc_barrier and resolved_account:
                     self.last_barrier_case = "CASE_2_PROACTIVE_FOLLOWUP"
-                    barrier_details = acc_barrier.get("barrier_details", "")
-                    if role_upper == "OS":
-                        if "Apollo" in resolved_account:
-                            barrier_context = "Given historical challenges at Apollo Hospitals with identifying eligible patients and operationalizing the pathway, did candidate flagging come up"
-                        elif "Fortis" in resolved_account:
-                            barrier_context = "Given biomarker testing delays at Fortis Healthcare impacting patient identification, did testing workflow alignment come up"
-                        elif "Manipal" in resolved_account:
-                            barrier_context = "Given diagnosis-to-treatment coordination delays at Manipal Hospitals, did clearer handoffs for routing candidates come up"
-                        elif "Max" in resolved_account:
-                            barrier_context = "Given past diagnostic handoff friction at Max Healthcare, did pathway streamlining for potential candidates come up"
-                        elif "Narayana" in resolved_account:
-                            barrier_context = "Given candidate identification challenges at Narayana Health, did early flagging of eligible patients come up"
-                        else:
-                            barrier_context = None
-                    else:  # FRM
-                        if "Apollo" in resolved_account:
-                            barrier_context = "Given inconsistent prior authorization turnaround times at Apollo Hospitals, did approved access-support resources come up"
-                        elif "Fortis" in resolved_account:
-                            barrier_context = "Given patient cost exposure concerns at Fortis Healthcare, did benefits verification or copay assistance come up"
-                        elif "Manipal" in resolved_account:
-                            barrier_context = "Given prior authorization scheduling uncertainty at Manipal Hospitals, did typical payer documentation requirements come up"
-                        elif "Max" in resolved_account:
-                            barrier_context = "Given formulary restriction requiring exception approvals at Max Healthcare, did committee timing or documentation come up"
-                        elif "Narayana" in resolved_account:
-                            barrier_context = "Given recent payer coverage policy changes creating uncertainty at Narayana Health, did updated policy information or access support channels come up"
-                        else:
-                            barrier_context = None
-                    if barrier_context:
+                    case_2_q = acc_barrier.get("case_2_inquiry")
+                    if case_2_q:
+                        formatted_q = case_2_q.format(hcp=display_hcp or "the doctor", brand=brand_name)
                         if display_hcp:
-                            return f"What was the main {brand_name} discussion with {display_hcp} today? {barrier_context}?"
-                        return f"What was the main {brand_name} discussion today? {barrier_context}?"
+                            return f"What was the main {brand_name} discussion with {display_hcp} today? {formatted_q}"
+                        return f"What was the main {brand_name} discussion today? {formatted_q}"
                 # No barrier registered — fall back to standard question
                 if display_hcp:
                     return f"What was the main {brand_name} discussion with {display_hcp} today?"
@@ -1160,21 +1151,21 @@ class KGContextRetriever:
             dynamic_covered.update(covered_topics)
 
         # Auto-detect brand from full conversation context if not explicitly provided
+        default_role_brand = "INLEXZO" if role_upper == "OS" else "RYBREVANT"
         resolved_brand = brand
-        if (not resolved_brand or resolved_brand == "RYBREVANT") and (conversation_history or candidate_answer):
+        if not resolved_brand and (conversation_history or candidate_answer):
             history_text = " ".join(e.get("text", "") for e in (conversation_history or [])) + " " + candidate_answer
             detected_b = detect_brand_from_text(history_text)
             if detected_b:
                 resolved_brand = detected_b
-        resolved_brand = resolved_brand or "RYBREVANT"
+        resolved_brand = resolved_brand or default_role_brand
 
         # Auto-detect account if not explicitly provided
         resolved_account = account_name
-        canonical_accounts = [("apollo", "Apollo Hospitals"), ("fortis", "Fortis Healthcare"), ("manipal", "Manipal Hospitals"), ("max", "Max Healthcare"), ("narayana", "Narayana Health")]
-        is_canonical = any(c[1].lower() in (resolved_account or "").lower() for c in canonical_accounts)
+        is_canonical = any(c[1].lower() in (resolved_account or "").lower() for c in CANONICAL_ACCOUNTS)
         if not is_canonical:
             full_text = " ".join(e.get("text", "") for e in (conversation_history or [])) + " " + candidate_answer
-            for k, canonical in canonical_accounts:
+            for k, canonical in CANONICAL_ACCOUNTS:
                 if k in full_text.lower():
                     resolved_account = canonical
                     break
@@ -1262,7 +1253,7 @@ class KGContextRetriever:
         self,
         role: str,
         current_state: str,
-        brand: str = "RYBREVANT",
+        brand: Optional[str] = None,
         persona_name: Optional[str] = None,
         account_name: Optional[str] = None,
         conversation_history: Optional[List[Dict[str, str]]] = None,
@@ -1318,7 +1309,7 @@ class KGContextRetriever:
 
 _CACHED_RETRIEVER: Optional[KGContextRetriever] = None
 
-def get_retriever(kg_json_path: str = "Persona_Solid_Cancer_OS_FRM.json") -> KGContextRetriever:
+def get_retriever(kg_json_path: str = "kg_os.json") -> KGContextRetriever:
     """Returns a singleton cached instance of KGContextRetriever."""
     global _CACHED_RETRIEVER
     if _CACHED_RETRIEVER is None:

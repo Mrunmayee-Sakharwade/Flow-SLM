@@ -202,14 +202,27 @@ def main():
     print("STARTING TRANSCRIPT-TO-DATASET TRANSFORMATION PIPELINE")
     print("=" * 70)
     
-    # Load KG for Scope Definitions
-    with open('Persona_Solid_Cancer_OS_FRM.json', 'r') as f:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(script_dir)
+    
+    # Locate kg_os.json
+    kg_candidates = [
+        os.path.join(base_dir, 'kg_os.json'),
+        os.path.join(script_dir, 'kg_os.json'),
+        'kg_os.json'
+    ]
+    kg_path = next((p for p in kg_candidates if os.path.exists(p)), None)
+    if not kg_path:
+        raise FileNotFoundError("kg_os.json not found!")
+        
+    print(f"Loading KG from: {kg_path}")
+    with open(kg_path, 'r', encoding='utf-8') as f:
         kg = json.load(f)
     
     out_of_scope_dict = defaultdict(set)
     in_scope_dict = defaultdict(set)
     
-    for edge in kg['edges']:
+    for edge in kg.get('edges', []):
         if edge['type'] == 'HAS_OUT_OF_SCOPE_TOPIC':
             role = edge['source'].replace('role:', '')
             topic = edge['target'].replace('topic:', '').replace('_', ' ')
@@ -219,21 +232,31 @@ def main():
             topic = edge['target'].replace('topic:', '').replace('_', ' ')
             in_scope_dict[role].add(topic)
     
-    print(f"Loaded KG Scopes: OS out-of-scope={len(out_of_scope_dict['OS'])}, FRM out-of-scope={len(out_of_scope_dict['FRM'])}")
+    print(f"Loaded KG Scopes: OS out-of-scope={len(out_of_scope_dict['OS'])}, OS in-scope={len(in_scope_dict['OS'])}")
     
-    frm_records = read_xlsx('generated_frm_training_transcripts_1k.xlsx')
-    os_records = read_xlsx('generated_os_training_transcripts_1k.xlsx')
-    
-    print(f"Loaded {len(frm_records)} FRM dialogues and {len(os_records)} OS dialogues.")
+    # Locate generated_os_training_transcripts 1.xlsx
+    xlsx_candidates = [
+        os.path.join(os.path.dirname(base_dir), 'generated_os_training_transcripts 1.xlsx'),
+        os.path.join(base_dir, 'generated_os_training_transcripts 1.xlsx'),
+        os.path.join(script_dir, 'generated_os_training_transcripts 1.xlsx'),
+        'generated_os_training_transcripts 1.xlsx'
+    ]
+    xlsx_path = next((p for p in xlsx_candidates if os.path.exists(p)), None)
+    if not xlsx_path:
+        raise FileNotFoundError("generated_os_training_transcripts 1.xlsx not found!")
+        
+    print(f"Reading OS transcripts from: {xlsx_path}")
+    os_records = read_xlsx(xlsx_path)
+    print(f"Loaded {len(os_records)} OS dialogues.")
     
     all_turns_dataset = []
     state_distribution = Counter()
     topic_distribution = Counter()
     role_distribution = Counter()
     
-    for dataset, default_role in [(frm_records, "FRM"), (os_records, "OS")]:
+    for dataset, default_role in [(os_records, "OS")]:
         for doc_idx, doc in enumerate(dataset):
-            dialogue_id = f"{default_role}_{int(doc['s_no']):04d}"
+            dialogue_id = f"{default_role}_DHAN_{int(doc['s_no']):04d}"
             brand = doc['brand']
             role = doc['role'] if doc['role'] else default_role
             rep_name = doc['name']
@@ -299,13 +322,13 @@ def main():
                     topic_distribution[top] += 1
 
     # Save to disk
-    output_json_path = os.path.join('data_prep', 'training_turns_dataset.json')
+    output_json_path = os.path.join(script_dir, 'training_turns_dataset.json')
     with open(output_json_path, 'w', encoding='utf-8') as f:
         json.dump(all_turns_dataset, f, indent=2)
     
-    summary_path = os.path.join('data_prep', 'dataset_summary.json')
+    summary_path = os.path.join(script_dir, 'dataset_summary.json')
     summary_data = {
-        "total_dialogues": len(frm_records) + len(os_records),
+        "total_dialogues": len(os_records),
         "total_turns_extracted": len(all_turns_dataset),
         "turns_by_role": dict(role_distribution),
         "state_distribution": dict(state_distribution.most_common()),
@@ -317,7 +340,6 @@ def main():
     print("\n" + "=" * 70)
     print("TRANSFORMATION COMPLETE!")
     print(f"Total Structured Turns Generated: {len(all_turns_dataset):,}")
-    print(f"  - FRM Turns: {role_distribution['FRM']:,}")
     print(f"  - OS Turns:  {role_distribution['OS']:,}")
     print(f"Saved dataset to: {output_json_path}")
     print(f"Saved summary to: {summary_path}")

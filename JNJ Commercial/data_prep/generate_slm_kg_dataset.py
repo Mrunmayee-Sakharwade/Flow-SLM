@@ -42,8 +42,8 @@ def main():
         
     print(f"Total raw turns loaded: {len(raw_turns):,}")
     
-    # Initialize KG Context Retriever
-    kg_retriever = KGContextRetriever()
+    # Initialize KG Context Retriever with fast graph indexing (no neural embedder needed for batch compilation)
+    kg_retriever = KGContextRetriever(init_embedder=False)
     
     slm_samples = []
     alpaca_samples = []
@@ -79,11 +79,11 @@ def main():
         cumulative_history = []
 
         for turn in turns:
-            role = turn.get("role", "FRM")
+            role = turn.get("role", "OS")
             state = turn.get("state", "STATE_0_GREETING_INITIATION")
             curr_q = turn.get("current_question", "")
             cand_ans = turn.get("candidate_answer", "")
-            brand = turn.get("brand", "RYBREVANT")
+            brand = turn.get("brand", "INLEXZO")
             topics = turn.get("kg_topics", [])
             is_term = turn.get("is_terminal", False)
             next_q = turn.get("next_question")
@@ -163,43 +163,31 @@ def main():
         dialogue_samples_map[d_id] = {
             "chatml": d_samples,
             "alpaca": d_alpaca,
-            "role": turns[0].get("role", "FRM")
+            "role": turns[0].get("role", "OS")
         }
 
     print(f"Constructed {total_turns_processed:,} KG-augmented training turns across {len(dialogue_samples_map):,} complete dialogues.")
 
-    # Group dialogues by Role (FRM and OS) and sort strictly by Serial Number (s_no 1 to 1000)
-    frm_dialogue_ids = sorted(
-        [d for d, val in dialogue_samples_map.items() if val["role"] == "FRM"],
-        key=lambda x: int(x.split("_")[1])
-    )
+    # Sort strictly by Serial Number (s_no 1 to 1498)
     os_dialogue_ids = sorted(
-        [d for d, val in dialogue_samples_map.items() if val["role"] == "OS"],
-        key=lambda x: int(x.split("_")[1])
+        list(dialogue_samples_map.keys()),
+        key=lambda x: int(x.split("_")[-1])
     )
 
-    print(f"FRM Dialogues: {len(frm_dialogue_ids):,} (S.No {int(frm_dialogue_ids[0].split('_')[1])} to {int(frm_dialogue_ids[-1].split('_')[1])})")
-    print(f"OS Dialogues:  {len(os_dialogue_ids):,} (S.No {int(os_dialogue_ids[0].split('_')[1])} to {int(os_dialogue_ids[-1].split('_')[1])})")
+    n_total = len(os_dialogue_ids)
+    # Match Dhananjay's original partition (1,196 train, 148 val, 150+ test)
+    n_train = 1196
+    n_val = 148
+    
+    train_ids = os_dialogue_ids[:n_train]
+    val_ids = os_dialogue_ids[n_train:n_train + n_val]
+    test_ids = os_dialogue_ids[n_train + n_val:]
 
-    # Serial-Number-Wise Split matching Excel order (80% Train, 10% Val, 10% Test)
-    # FRM: S.No 1-800 -> Train, 801-900 -> Val, 901-1000 -> Test
-    # OS:  S.No 1-800 -> Train, 801-900 -> Val, 901-1000 -> Test
-    frm_train_ids = frm_dialogue_ids[:800]
-    frm_val_ids = frm_dialogue_ids[800:900]
-    frm_test_ids = frm_dialogue_ids[900:]
-
-    os_train_ids = os_dialogue_ids[:800]
-    os_val_ids = os_dialogue_ids[800:900]
-    os_test_ids = os_dialogue_ids[900:]
-
-    train_ids = frm_train_ids + os_train_ids
-    val_ids = frm_val_ids + os_val_ids
-    test_ids = frm_test_ids + os_test_ids
-
-    print(f"\nSerial-Number-Wise Partition Summary:")
-    print(f"  - Train Split (S.No 0001 - 0800): {len(train_ids)} dialogues ({len(frm_train_ids)} FRM + {len(os_train_ids)} OS)")
-    print(f"  - Val Split   (S.No 0801 - 0900): {len(val_ids)} dialogues ({len(frm_val_ids)} FRM + {len(os_val_ids)} OS)")
-    print(f"  - Test Split  (S.No 0901 - 1000): {len(test_ids)} dialogues ({len(frm_test_ids)} FRM + {len(os_test_ids)} OS)")
+    print(f"OS Dialogues: {n_total:,} (S.No {int(os_dialogue_ids[0].split('_')[-1])} to {int(os_dialogue_ids[-1].split('_')[-1])})")
+    print(f"\nSerial-Number-Wise Partition Summary (OS_DHAN Partition: {len(train_ids)} / {len(val_ids)} / {len(test_ids)}):")
+    print(f"  - Train Split (S.No {int(train_ids[0].split('_')[-1]):04d} - {int(train_ids[-1].split('_')[-1]):04d}): {len(train_ids)} dialogues")
+    print(f"  - Val Split   (S.No {int(val_ids[0].split('_')[-1]):04d} - {int(val_ids[-1].split('_')[-1]):04d}): {len(val_ids)} dialogues")
+    print(f"  - Test Split  (S.No {int(test_ids[0].split('_')[-1]):04d} - {int(test_ids[-1].split('_')[-1]):04d}): {len(test_ids)} dialogues")
 
 
     # Flatten samples in strict chronological order per dialogue

@@ -16,7 +16,7 @@ import re
 from typing import Dict, List, Any, Optional
 
 class KGRuleEngine:
-    def __init__(self, kg_json_path: str = "Persona_Solid_Cancer_OS_FRM.json"):
+    def __init__(self, kg_json_path: str = "kg_os.json"):
         with open(kg_json_path, "r", encoding="utf-8") as f:
             self.kg_data = json.load(f)
         

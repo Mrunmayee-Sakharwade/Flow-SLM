@@ -273,7 +273,7 @@ def main():
     parser.add_argument(
         "--kg-path",
         type=str,
-        default="Persona_Solid_Cancer_OS_FRM.json",
+        default="kg_os.json",
         help="Path to the Knowledge Graph JSON file",
     )
     args = parser.parse_args()
@@ -287,7 +287,7 @@ def main():
     if not Path(args.kg_path).exists():
         raise SystemExit(
             f"KG file not found at '{args.kg_path}'. "
-            f"Pass --kg-path pointing at Persona_Solid_Cancer_OS_FRM.json."
+            f"Pass --kg-path pointing at kg_os.json."
         )
 
     # Load KG and Model
