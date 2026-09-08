@@ -139,14 +139,15 @@ class TurnRequest(BaseModel):
         description="Active Session ID obtained from /api/session/new",
         examples=["FRM_SESS_001"]
     )
-    utterance: str = Field(
-        ..., 
-        description="Raw rep utterance / voice transcription",
-        examples=[
-            "I spoke with Dr. Robert Avery and Lisa regarding prior authorization denials.",
-            "The oncologist asked about clinical trial efficacy and biomarker testing."
-        ]
+    utterance: Optional[str] = Field(
+        default=None, 
+        description="Raw rep utterance / voice transcription"
     )
+    candidate_answer: Optional[str] = Field(default=None)
+    user_message: Optional[str] = Field(default=None)
+    role: Optional[str] = Field(default=None)
+    brand: Optional[str] = Field(default=None)
+    generate_audio: Optional[bool] = Field(default=True)
 
 class TurnResponse(BaseModel):
     status: str = Field(
@@ -155,6 +156,14 @@ class TurnResponse(BaseModel):
     role: Optional[str] = None
     bot_message: str = Field(
         description="Next predicted interview question or exact regulatory scope violation intercept message"
+    )
+    bot_audio_base64: Optional[str] = Field(
+        default=None,
+        description="Base64-encoded audio speech of predicted question"
+    )
+    bot_audio_format: Optional[str] = Field(
+        default="audio/mp3",
+        description="Audio MIME type of response"
     )
     engine: Optional[str] = Field(
         default="SLM (KG-Conditioned)",
@@ -547,9 +556,19 @@ def process_turn(req: TurnRequest):
        - *If Violation*: Intercepts with exact KG Rule Citation (e.g. `resp:FRM:28`).
        - *If Compliant*: Advances FSM state and generates next question using KG-Conditioned SLM.
     """
-    result = bot.process_turn(session_id=req.session_id, candidate_answer=req.utterance)
+    text = req.utterance or req.candidate_answer or req.user_message or ""
+    result = bot.process_turn(session_id=req.session_id, candidate_answer=text)
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
+        
+    if req.generate_audio and result.get("bot_message"):
+        try:
+            synth = audio_synthesizer.synthesize(result["bot_message"], voice="michael")
+            result["bot_audio_base64"] = synth.get("audio_base64")
+            result["bot_audio_format"] = synth.get("audio_format", "audio/mp3")
+        except Exception:
+            pass
+            
     return result
 
 @app.post("/api/session/turn_stream", tags=["Dialogue Management"])
@@ -558,8 +577,9 @@ def process_turn_stream(req: TurnRequest):
     Streams conversational turn tokens with real-time SSE chunks, first-token latency,
     generation speed metrics, and final state result.
     """
+    text = req.utterance or req.candidate_answer or req.user_message or ""
     def event_generator():
-        for chunk in bot.process_turn_stream(session_id=req.session_id, candidate_answer=req.utterance):
+        for chunk in bot.process_turn_stream(session_id=req.session_id, candidate_answer=text):
             yield f"data: {json.dumps(chunk)}\n\n"
         yield "data: [DONE]\n\n"
 
@@ -943,7 +963,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", "8000"))
     print("\n============================================================")
-    print(" Johnson & Johnson Commercial Oncology API & Swagger Live!")
+    print(" Commercial Oncology Call Intelligence API & Swagger Live!")
     print(f" Swagger Documentation : http://0.0.0.0:{port}/docs")
     print(f" ReDoc Documentation   : http://0.0.0.0:{port}/redoc")
     print(f" Web User Interface    : http://0.0.0.0:{port}")

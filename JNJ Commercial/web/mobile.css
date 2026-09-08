@@ -21,10 +21,10 @@
   --text-muted: #64748B;
   --text-light: #94A3B8;
 
-  /* J&J & Medical Accents */
-  --jnj-red: #D91438;
-  --jnj-red-hover: #BE123C;
-  --jnj-red-light: #FFE4E6;
+  /* Commercial Healthcare Accents */
+  --primary-red: #D91438;
+  --primary-red-hover: #BE123C;
+  --primary-red-light: #FFE4E6;
   --primary-blue: #2563EB;
   --primary-blue-light: #EFF6FF;
   --success-green: #059669;
@@ -167,7 +167,7 @@ html, body {
 
 .btn-desktop-back:hover {
   background: #FFFFFF;
-  color: var(--jnj-red);
+  color: var(--primary-red);
 }
 
 /* Clean Top App Bar (Bright, Crisp) */
@@ -193,7 +193,7 @@ html, body {
   font-size: 14px;
   font-weight: 800;
   letter-spacing: -0.3px;
-  color: var(--jnj-red);
+  color: var(--primary-red);
 }
 
 .top-bar-logo span {
@@ -277,11 +277,13 @@ html, body {
 
 .login-scroll-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 20px 20px 10px;
+  padding: 20px 20px 14px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .login-header-simple {
@@ -294,8 +296,8 @@ html, body {
   gap: 5px;
   font-size: 11px;
   font-weight: 700;
-  color: var(--jnj-red);
-  background: var(--jnj-red-light);
+  color: var(--primary-red);
+  background: var(--primary-red-light);
   padding: 3px 8px;
   border-radius: var(--radius-full);
   margin-bottom: 6px;
@@ -330,7 +332,7 @@ html, body {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--jnj-red) 0%, #E11D48 100%);
+  background: linear-gradient(135deg, var(--primary-red) 0%, #E11D48 100%);
   color: #FFFFFF;
   font-weight: 800;
   font-size: 20px;
@@ -377,7 +379,7 @@ html, body {
 }
 
 .rep-name-input:focus {
-  border-bottom-color: var(--jnj-red);
+  border-bottom-color: var(--primary-red);
 }
 
 /* Quick Rep Name Chips */
@@ -400,9 +402,9 @@ html, body {
 }
 
 .name-chip:hover, .name-chip.active {
-  background: var(--jnj-red-light);
-  border-color: var(--jnj-red);
-  color: var(--jnj-red);
+  background: var(--primary-red-light);
+  border-color: var(--primary-red);
+  color: var(--primary-red);
 }
 
 /* Simple Persona Selector (OS vs FRM) */
@@ -496,12 +498,37 @@ html, body {
   background: #FFFFFF;
   border-top: 1px solid var(--border-light);
   flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+}
+
+.btn-ping-endpoint {
+  background: #F8FAFC;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  border-radius: var(--radius-full);
+  padding: 5px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-ping-endpoint:hover {
+  background: var(--primary-blue-light);
+  color: var(--primary-blue);
+  border-color: var(--primary-blue);
 }
 
 .btn-start-call {
   width: 100%;
   height: 48px;
-  background: var(--jnj-red);
+  background: var(--primary-red);
   color: #FFFFFF;
   border: none;
   border-radius: var(--radius-full);
@@ -518,7 +545,7 @@ html, body {
 }
 
 .btn-start-call:hover {
-  background: var(--jnj-red-hover);
+  background: var(--primary-red-hover);
   transform: translateY(-1px);
 }
 
@@ -558,7 +585,7 @@ html, body {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: var(--jnj-red);
+  background: var(--primary-red);
   color: #FFFFFF;
   font-weight: 800;
   font-size: 15px;
@@ -969,7 +996,7 @@ html, body {
   flex: 1;
   height: 48px;
   border-radius: var(--radius-full);
-  background: var(--jnj-red);
+  background: var(--primary-red);
   color: #FFFFFF;
   border: none;
   font-family: var(--font-sans);
@@ -986,7 +1013,7 @@ html, body {
 }
 
 .btn-main-mic:hover {
-  background: var(--jnj-red-hover);
+  background: var(--primary-red-hover);
   transform: translateY(-1px);
 }
 

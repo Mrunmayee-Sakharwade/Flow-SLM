@@ -1644,7 +1644,7 @@ button {
   margin-left: 12px;
   background: rgba(13, 71, 161, 0.08);
   border: 1px solid rgba(13, 71, 161, 0.2);
-  color: var(--color-jnj-navy, #002B66);
+  color: var(--color-navy, #002B66);
   padding: 4px 10px;
   border-radius: 14px;
   font-size: 11px;
@@ -1658,7 +1658,7 @@ button {
 
 .btn-voice-toggle:hover {
   background: rgba(13, 71, 161, 0.16);
-  border-color: var(--color-jnj-navy, #002B66);
+  border-color: var(--color-navy, #002B66);
 }
 
 .btn-voice-toggle.muted {
@@ -1795,7 +1795,7 @@ button {
 }
 
 .audio-play-btn {
-  background: var(--color-jnj-navy, #002B66);
+  background: var(--color-navy, #002B66);
   border: none;
   color: #ffffff;
   width: 28px;

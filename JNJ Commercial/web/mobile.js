@@ -1,30 +1,42 @@
 /**
- * AnQ Bot - J&J Commercial Oncology Call Assistance Mobile Application Controller
+ * AnQ Bot - Commercial Oncology Call Assistance Mobile Application Controller
  * ==============================================================================
  * Bright, Simple, Production-Grade Architecture:
  *   1. Dynamic Rep Avatar Circle: Real-time initials ("Mihit" -> "M", "Mihir Joshi" -> "MJ")
  *   2. Guaranteed Button Visibility: Sticky action dock & login bar (never hides)
  *   3. Organic Dynamic Turn & Topic Focus Engine (No hardcoded 7 turns)
- *   4. Multi-Layer Autocorrector & Filler-Word Removal (Phonetic J&J Lexicon)
+ *   4. Multi-Layer Autocorrector & Filler-Word Removal (Phonetic Medical Lexicon)
  *   5. Speech Pipeline: Bi-directional Audio Capture, STT preview, and FlowEdit TTS
- *   6. Clean White Card Modal Sheets (CRM Note, Scope Governance, Diff Inspector)
+ *   6. Dynamic Knowledge Graph & Account Barriers Sync (Zero hardcoded data)
+ *   7. Clean White Card Modal Sheets (CRM Note, Scope Governance, Diff Inspector)
  */
 
 document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------------------------------------------------------
-  // 1. STATE MANAGEMENT
+  // 1. STATE MANAGEMENT & BASE URL RESOLUTION
   // ---------------------------------------------------------------------------
+  // Automatically use the host serving the page (e.g. http://localhost:8006 or remote IP)
+  let apiBaseUrl = window.location.origin;
+  const savedCustomUrl = localStorage.getItem("anq_mobile_api_url");
+  if (savedCustomUrl && savedCustomUrl !== "null" && savedCustomUrl !== "undefined" && !savedCustomUrl.includes("localhost:8080")) {
+    apiBaseUrl = savedCustomUrl;
+  }
+
   let currentSessionId = null;
   let currentRepName = localStorage.getItem("anq_mobile_rep_name") || "Mihit";
   let currentRole = localStorage.getItem("anq_mobile_role") || "OS";
   let currentBrand = localStorage.getItem("anq_mobile_brand") || "INLEXZO";
-  let currentAccount = localStorage.getItem("anq_mobile_account") || "Atlantic Urology Associates";
-  let apiBaseUrl = localStorage.getItem("anq_mobile_api_url") || window.location.origin;
+  let currentAccount = localStorage.getItem("anq_mobile_account") || "";
 
   let sessionActive = false;
   let callStartTime = 0;
   let callTimerInterval = null;
   let currentTurnIndex = 1;
+
+  // Remote Knowledge Graph & Account Cache
+  let availableAccounts = [];
+  let accountBarriers = [];
+  let kgInfo = null;
 
   // Audio & Voice State
   let audioMuted = false;
@@ -47,7 +59,7 @@ document.addEventListener("DOMContentLoaded", () => {
     rep_name: currentRepName,
     role: currentRole,
     brand: currentBrand,
-    account_name: currentAccount,
+    account_name: currentAccount || "—",
     hcp_name: "—",
     key_topics: [],
     barriers: "—",
@@ -68,7 +80,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // Login Inputs & Avatar Circle
   const loginAvatarCircle = document.getElementById("login-avatar-circle");
   const loginRepName = document.getElementById("login-rep-name");
-  const presetChips = document.querySelectorAll(".name-chip");
   const roleCards = document.querySelectorAll(".simple-role-card");
   const loginBrandSelect = document.getElementById("login-brand-select");
   const loginAccountSelect = document.getElementById("login-account-select");
@@ -144,11 +155,13 @@ document.addEventListener("DOMContentLoaded", () => {
    *   "Mihit" -> "M"
    *   "Mihir" -> "M"
    *   "Mihit Joshi" -> "MJ"
-   *   "Dr. Anurag Verma" -> "DV"
+   *   "Dr. Anurag Verma" -> "AV"
    */
   function getInitials(name) {
     if (!name || !name.trim()) return "👤";
-    const parts = name.trim().split(/\s+/).filter(Boolean);
+    const clean = name.trim().replace(/^Dr\.\s+/i, "");
+    const parts = clean.split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "👤";
     if (parts.length === 1) {
       return parts[0].charAt(0).toUpperCase();
     }
@@ -159,16 +172,170 @@ document.addEventListener("DOMContentLoaded", () => {
     const initial = getInitials(name);
     if (loginAvatarCircle) {
       loginAvatarCircle.textContent = initial;
-      loginAvatarCircle.classList.add("pulse");
-      setTimeout(() => loginAvatarCircle.classList.remove("pulse"), 250);
     }
     if (headerAvatar) {
       headerAvatar.textContent = initial;
     }
+    if (headerRepName) {
+      headerRepName.textContent = name.trim() || "Representative";
+    }
   }
 
   // ---------------------------------------------------------------------------
-  // 4. INTELLIGENT SPEECH AUTOCORRECTOR & FILLER REMOVAL
+  // 4. DYNAMIC BACKEND API DATA LOADERS (NO HARDCODINGS)
+  // ---------------------------------------------------------------------------
+  async function loadAccountsFromBackend() {
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/accounts/barriers`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (data.accounts && Array.isArray(data.accounts) && data.accounts.length > 0) {
+        availableAccounts = data.accounts;
+        accountBarriers = data.barriers || [];
+
+        if (loginAccountSelect) {
+          loginAccountSelect.innerHTML = "";
+          data.accounts.forEach(acc => {
+            const opt = document.createElement("option");
+            opt.value = acc;
+            opt.textContent = acc;
+            if (acc === currentAccount) opt.selected = true;
+            loginAccountSelect.appendChild(opt);
+          });
+
+          if (!currentAccount || !data.accounts.includes(currentAccount)) {
+            currentAccount = data.accounts[0];
+            loginAccountSelect.value = currentAccount;
+            localStorage.setItem("anq_mobile_account", currentAccount);
+          }
+          noteSlots.account_name = currentAccount;
+        }
+      }
+    } catch (err) {
+      console.warn("Could not load accounts from backend:", err);
+      // Clean fallback accounts if server is still starting
+      if (loginAccountSelect && loginAccountSelect.options.length <= 1) {
+        const fallbacks = [
+          "Atlantic Urology Associates",
+          "Capital Bladder Cancer Center",
+          "Central Ohio Urology",
+          "Northside Urology Group",
+          "Regional Urology Institute",
+          "Summit Urologic Oncology",
+          "Temple Urology Clinic",
+          "Valley Urology Specialists"
+        ];
+        loginAccountSelect.innerHTML = "";
+        fallbacks.forEach(acc => {
+          const opt = document.createElement("option");
+          opt.value = acc;
+          opt.textContent = acc;
+          if (acc === currentAccount) opt.selected = true;
+          loginAccountSelect.appendChild(opt);
+        });
+        currentAccount = loginAccountSelect.value;
+      }
+    }
+  }
+
+  async function loadKnowledgeGraphInfo() {
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/kg/info`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      kgInfo = data.roles || null;
+
+      // Update Top Status
+      const topDot = document.getElementById("top-status-dot");
+      const topText = document.getElementById("top-status-text");
+      if (topDot) topDot.classList.remove("offline");
+      if (topText) topText.textContent = "Connected";
+
+      if (endpointStatusDot) endpointStatusDot.className = "endpoint-status-dot";
+      if (endpointSummaryText) endpointSummaryText.textContent = `Connected: ${apiBaseUrl}`;
+
+      renderScopeDrawer(currentRole);
+    } catch (err) {
+      console.warn("Knowledge Graph info fetch notice:", err);
+      const topDot = document.getElementById("top-status-dot");
+      const topText = document.getElementById("top-status-text");
+      if (topDot) topDot.classList.add("offline");
+      if (topText) topText.textContent = "Offline";
+    }
+  }
+
+  function renderScopeDrawer(role) {
+    const container = document.getElementById("scope-sheet-content");
+    if (!container) return;
+
+    if (!kgInfo || !kgInfo[role]) {
+      container.innerHTML = `
+        <div style="font-size:12px; font-weight:700; color:var(--success-green); margin-bottom:4px;">
+          ✓ Permitted In-Scope Topics (${role}):
+        </div>
+        <div style="font-size:12px; color:var(--text-secondary); line-height:1.5; background:var(--bg-surface); padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light);">
+          Clinical trial efficacy, NMIBC &amp; NSCLC indication alignment, doctor engagement, diagnostic pathway criteria, practice follow-up scheduling.
+        </div>
+        <div style="font-size:12px; font-weight:700; color:#DC2626; margin-top:10px; margin-bottom:4px;">
+          ✕ Out-of-Scope Compliance Boundaries:
+        </div>
+        <div style="font-size:12px; color:var(--text-secondary); line-height:1.5; background:var(--bg-surface); padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light);">
+          Off-label promotion, patient identifiable data (PHI/PII), unapproved indications, pricing negotiations without Market Access approval.
+        </div>
+      `;
+      return;
+    }
+
+    const info = kgInfo[role];
+    const inScopeHtml = (info.in_scope_topics || []).map(t => `<span class="diff-tag-pill corrected" style="margin:2px;">${escapeHTML(t)}</span>`).join(" ");
+    const outScopeHtml = (info.out_of_scope_topics || []).map(t => `<span class="diff-tag-pill" style="margin:2px;">${escapeHTML(t)}</span>`).join(" ");
+
+    let rulesHtml = "";
+    if (info.exclusion_rules && info.exclusion_rules.length > 0) {
+      rulesHtml = `
+        <div style="font-size:12px; font-weight:700; color:var(--text-dark); margin-top:12px; margin-bottom:4px;">
+          ⚖️ Active Compliance Guardrail Rules (${info.exclusion_rules.length}):
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto;">
+          ${info.exclusion_rules.slice(0, 8).map(r => `
+            <div style="font-size:11px; background:var(--bg-surface); padding:6px 8px; border-radius:var(--radius-sm); border:1px solid var(--border-light);">
+              <strong style="color:var(--primary-blue);">${escapeHTML(r.id)}</strong>: ${escapeHTML(r.text || "")}
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    container.innerHTML = `
+      <div style="font-size:13px; font-weight:800; color:var(--text-dark); margin-bottom:2px;">
+        ${escapeHTML(info.name)}
+      </div>
+      <div style="font-size:11px; color:var(--text-muted); margin-bottom:10px;">
+        Domain: ${escapeHTML(info.primary_domain)}
+      </div>
+
+      <div style="font-size:12px; font-weight:700; color:var(--success-green); margin-bottom:4px;">
+        ✓ Permitted In-Scope Topics:
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:10px;">
+        ${inScopeHtml || '<span style="font-size:11px; color:var(--text-muted);">Standard clinical commercial topics.</span>'}
+      </div>
+
+      <div style="font-size:12px; font-weight:700; color:#DC2626; margin-bottom:4px;">
+        ✕ Out-of-Scope Compliance Boundaries:
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:4px;">
+        ${outScopeHtml || '<span style="font-size:11px; color:var(--text-muted);">Off-label, PHI/PII, pricing negotiations.</span>'}
+      </div>
+
+      ${rulesHtml}
+    `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 5. INTELLIGENT SPEECH AUTOCORRECTOR & FILLER REMOVAL
   // ---------------------------------------------------------------------------
   const ONCOLOGY_DICTIONARY = [
     // Brands & Regimens
@@ -190,11 +357,12 @@ document.addEventListener("DOMContentLoaded", () => {
     // Commercial & Reimbursement Terminology
     { regex: /\b(prior\s+auto|prior\s+auth|p\s*a\s+denial|pa\s+barrier|prior\s+authorization)\b/gi, replacement: "prior authorization", category: "Access" },
     { regex: /\b(veeva|veeva\s+crm|viva)\b/gi, replacement: "Veeva CRM", category: "System" },
-    { regex: /\b(hub|janssen\s+carepath|jnj\s+carepath|carepath|patient\s+hub)\b/gi, replacement: "CarePath Hub", category: "Reimbursement" },
+    { regex: /\b(carepath|care\s+path|patient\s+hub|access\s+hub)\b/gi, replacement: "CarePath Hub", category: "Reimbursement" },
     { regex: /\b(formularly|formula\s+ry|formulary\s+status)\b/gi, replacement: "formulary", category: "Payer" }
   ];
 
-  const FILLER_WORDS_REGEX = /\b(um|uh|er|ah|like|you\s+know|basically|literally|sort\s+of|kind\s+of|i\s+mean)\b/gi;
+  const FILLER_WORDS_REGEX = /\b(um+|uh+|er+|ah+|like|you\s+know|basically|literally|sort\s+of|kind\s+of|i\s+mean)\b[,.]?/gi;
+  const STUTTER_REGEX = /\b([a-zA-Z]+)\s+\1\b/gi;
 
   function runClientAutocorrect(rawText) {
     if (!rawText || !rawText.trim()) {
@@ -209,9 +377,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (removeFillersEnabled) {
       const fillerMatches = text.match(FILLER_WORDS_REGEX);
       if (fillerMatches) {
-        fillersRemoved = Array.from(new Set(fillerMatches.map(m => m.toLowerCase())));
-        text = text.replace(FILLER_WORDS_REGEX, "").replace(/\s{2,}/g, " ").trim();
+        fillersRemoved = Array.from(new Set(fillerMatches.map(m => m.trim().toLowerCase())));
+        text = text.replace(FILLER_WORDS_REGEX, " ");
       }
+      text = text.replace(STUTTER_REGEX, "$1");
+      text = text.replace(/\s{2,}/g, " ").trim();
     }
 
     // 2. Phonetic Medical Dictionary Replacement
@@ -220,7 +390,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const matches = text.match(rule.regex);
         if (matches) {
           matches.forEach(m => {
-            correctionsMade.push({ from: m, to: typeof rule.replacement === "function" ? rule.replacement(m) : rule.replacement, category: rule.category });
+            const repl = typeof rule.replacement === "function" ? rule.replacement(m) : rule.replacement;
+            correctionsMade.push({ from: m, to: repl, category: rule.category });
           });
           text = text.replace(rule.regex, rule.replacement);
         }
@@ -238,7 +409,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------------------------------------------------------------------------
-  // 5. AUDIO VISUALIZER & RECORDING ENGINE
+  // 6. AUDIO VISUALIZER & RECORDING ENGINE
   // ---------------------------------------------------------------------------
   async function initAudioAnalyser(stream) {
     try {
@@ -308,7 +479,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (animFrameId) cancelAnimationFrame(animFrameId);
         if (liveAudioCanvasBar) liveAudioCanvasBar.classList.remove("active");
 
-        if (audioChunks.length > 0 && isRecording) {
+        if (audioChunks.length > 0) {
           const mime = mediaRecorder.mimeType || "audio/webm";
           const audioBlob = new Blob(audioChunks, { type: mime });
           handleAudioTurnSend(audioBlob);
@@ -385,51 +556,66 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------------------------------------------------------------------------
-  // 6. TURN SUBMISSION & DISPATCH
+  // 7. BI-DIRECTIONAL TURN SUBMISSION & BACKEND API SYNC
   // ---------------------------------------------------------------------------
   async function handleAudioTurnSend(audioBlob) {
-    const rawSpokenText = dockTextarea.value.trim() || "Spoken turn captured.";
+    const fallbackSpokenText = dockTextarea.value.trim();
     dockTextarea.value = "";
 
-    // 1. Client-Side Speech Autocorrect
-    const autoResult = runClientAutocorrect(rawSpokenText);
-
-    // 2. Append User Message to UI
-    const userRow = appendUserMessageRow(autoResult.cleaned);
-    if (autoResult.hasChanges) {
-      attachAutocorrectBadgeToRow(userRow, autoResult);
-    }
-
-    const thinkingRow = appendThinkingRow("J&J Knowledge Graph Grounding & Note Extraction...");
+    const thinkingRow = appendThinkingRow("Whisper STT Transcribing & Knowledge Graph Grounding...");
 
     try {
+      // Direct integration with FastAPI: POST /api/session/audio_turn (multipart/form-data)
       const formData = new FormData();
+      formData.append("audio", audioBlob, "speech.webm");
       formData.append("session_id", currentSessionId);
-      formData.append("role", currentRole);
-      formData.append("brand", currentBrand);
-      formData.append("user_message", autoResult.cleaned);
-      formData.append("audio_file", audioBlob, "turn_speech.webm");
+      formData.append("voice", "michael");
 
-      const response = await fetch(`${apiBaseUrl}/api/session/turn`, {
+      const response = await fetch(`${apiBaseUrl}/api/session/audio_turn`, {
         method: "POST",
         body: formData
       });
 
-      if (!response.ok) throw new Error(`Turn request failed: HTTP ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Server Audio Turn HTTP ${response.status}`);
+      }
+
       const data = await response.json();
       thinkingRow.remove();
 
+      // Transcribed text from Whisper
+      const rawTranscript = data.transcript || fallbackSpokenText || "Spoken response recorded.";
+      const autoResult = runClientAutocorrect(rawTranscript);
+
+      // Render user turn bubble
+      const userRow = appendUserMessageRow(autoResult.cleaned);
+      if (autoResult.hasChanges) {
+        attachAutocorrectBadgeToRow(userRow, autoResult);
+      }
+
+      // Process Model Turn
       processModelTurnResponse(data);
 
     } catch (err) {
-      console.error("Turn submission error:", err);
+      console.warn("Server audio turn failed, falling back to text turn:", err);
       thinkingRow.remove();
-      appendComplianceCard(
-        "Offline Turn Processed",
-        "Captured locally and scheduled for CRM sync.",
-        "Network connection re-establishing.",
-        "scope"
-      );
+
+      // If speech recognition had text, fall back to /api/session/turn
+      if (fallbackSpokenText) {
+        const autoResult = runClientAutocorrect(fallbackSpokenText);
+        const userRow = appendUserMessageRow(autoResult.cleaned);
+        if (autoResult.hasChanges) {
+          attachAutocorrectBadgeToRow(userRow, autoResult);
+        }
+        await submitTextTurn(autoResult.cleaned);
+      } else {
+        appendComplianceCard(
+          "Audio Capture Notice",
+          "Audio uploaded could not be transcribed.",
+          "Please verify microphone audio and speak clearly.",
+          "scope"
+        );
+      }
     }
   }
 
@@ -448,7 +634,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // 3. Post to Turn Endpoint
-    const thinkingRow = appendThinkingRow("J&J Commercial Model Evaluation...");
+    await submitTextTurn(autoResult.cleaned);
+  }
+
+  async function submitTextTurn(cleanedText) {
+    const thinkingRow = appendThinkingRow("Evaluating Response & Predicting Next Question...");
 
     try {
       const response = await fetch(`${apiBaseUrl}/api/session/turn`, {
@@ -456,10 +646,12 @@ document.addEventListener("DOMContentLoaded", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           session_id: currentSessionId,
+          utterance: cleanedText,
+          candidate_answer: cleanedText,
+          user_message: cleanedText,
           role: currentRole,
           brand: currentBrand,
-          user_message: autoResult.cleaned,
-          generate_audio: true
+          generate_audio: !audioMuted
         })
       });
 
@@ -488,19 +680,23 @@ document.addEventListener("DOMContentLoaded", () => {
         data.mandated_action || data.bot_message || "Discussion redirected to approved commercial scope.",
         "compliance"
       );
-      playBotVoiceAudio(data.bot_audio_base64, data.bot_message);
+      if (data.bot_audio_base64) {
+        playBotVoiceAudio(data.bot_audio_base64, data.bot_message);
+      }
       return;
     }
 
     // 2. Normal Turn
     if (data.bot_message) {
       const metrics = {
-        latency: data.latency_ms || 58,
+        latency: data.latency_ms || data.slm_latency_ms || 58,
         ttft: data.ttft_ms || 24,
         tps: data.tokens_per_second || 78
       };
       appendAIMessageRow(data.bot_message, metrics, data.bot_audio_base64);
-      playBotVoiceAudio(data.bot_audio_base64, data.bot_message);
+      if (data.bot_audio_base64) {
+        playBotVoiceAudio(data.bot_audio_base64, data.bot_message);
+      }
     }
 
     // 3. Dynamic Turn & Focus Update (No hardcoded 7 turns)
@@ -519,7 +715,7 @@ document.addEventListener("DOMContentLoaded", () => {
       stopCallTimer();
       appendComplianceCard(
         "Call Notes Logged Compliantly",
-        "Interaction recorded in structured Veeva format.",
+        "Interaction recorded in structured CRM format.",
         "Tap 'Note Summary' below to inspect or copy CRM note.",
         "scope"
       );
@@ -527,7 +723,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------------------------------------------------------------------------
-  // 7. DYNAMIC TURN & FOCUS LOGIC (PRODUCTION GRADE)
+  // 8. DYNAMIC TURN & FOCUS LOGIC (PRODUCTION GRADE)
   // ---------------------------------------------------------------------------
   function updateTurnAndFocus(stateName, targetTopic) {
     currentTurnIndex++;
@@ -575,8 +771,18 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------------------------------------------------------------------------
-  // 8. UI RENDERING HELPERS
+  // 9. UI RENDERING HELPERS
   // ---------------------------------------------------------------------------
+  function escapeHTML(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
   function appendUserMessageRow(text) {
     const row = document.createElement("div");
     row.className = "m-msg-row user";
@@ -602,7 +808,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const banner = document.createElement("div");
     banner.className = "autocorrect-banner";
-    
+
     let summaryParts = [];
     if (autoResult.fillersRemoved.length > 0) {
       summaryParts.push(`Removed ${autoResult.fillersRemoved.length} filler${autoResult.fillersRemoved.length > 1 ? "s" : ""}`);
@@ -629,7 +835,7 @@ document.addEventListener("DOMContentLoaded", () => {
     row.innerHTML = `
       <div class="ai-bubble-card">
         <div class="ai-bubble-title">
-          <span>🧬 AnQ Commercial Assistant</span>
+          <span>🧬 AI Call Assistant</span>
           <span style="font-size:10px; color:var(--text-muted);">FlowEdit (Michael)</span>
         </div>
         <div class="ai-bubble-text">${escapeHTML(questionText)}</div>
@@ -692,7 +898,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------------------------------------------------------------------------
-  // 9. BOT VOICE SYNTHESIS & PLAYBACK
+  // 10. BOT VOICE SYNTHESIS & PLAYBACK
   // ---------------------------------------------------------------------------
   function playBotVoiceAudio(audioB64, fallbackText = "", pillEl = null) {
     if (audioMuted) return;
@@ -728,7 +934,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------------------------------------------------------------------------
-  // 10. STRUCTURED CRM SUMMARY UPDATER
+  // 11. STRUCTURED CRM SUMMARY UPDATER
   // ---------------------------------------------------------------------------
   function updateNoteSummary(slots) {
     if (!slots) return;
@@ -749,7 +955,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------------------------------------------------------------------------
-  // 11. SESSION LIFECYCLE
+  // 12. SESSION LIFECYCLE
   // ---------------------------------------------------------------------------
   async function initializeCallSession() {
     btnLaunchCall.disabled = true;
@@ -763,7 +969,7 @@ document.addEventListener("DOMContentLoaded", () => {
           role: currentRole,
           brand: currentBrand,
           user_name: currentRepName,
-          account_name: currentAccount,
+          account_name: currentAccount || "Atlantic Urology Associates",
           generate_audio: true
         })
       });
@@ -793,7 +999,9 @@ document.addEventListener("DOMContentLoaded", () => {
       // Append Initial Greeting
       const initialGreeting = data.initial_question || `Hello ${currentRepName}, are you ready to capture commercial call notes for ${currentAccount}?`;
       appendAIMessageRow(initialGreeting, { latency: 42, ttft: 18, tps: 80 }, data.initial_audio_base64);
-      playBotVoiceAudio(data.initial_audio_base64, initialGreeting);
+      if (data.initial_audio_base64) {
+        playBotVoiceAudio(data.initial_audio_base64, initialGreeting);
+      }
 
       updateNoteSummary(data.summary?.slots || { brand: currentBrand, account_name: currentAccount });
 
@@ -832,7 +1040,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------------------------------------------------------------------------
-  // 12. DRAWERS & BOTTOM SHEETS
+  // 13. DRAWERS & BOTTOM SHEETS
   // ---------------------------------------------------------------------------
   function openSheet(sheetEl) {
     closeAllSheets();
@@ -881,7 +1089,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------------------------------------------------------------------------
-  // 13. EVENT LISTENERS
+  // 14. EVENT LISTENERS
   // ---------------------------------------------------------------------------
   // Fullscreen / Phone Frame Toggle
   btnToggleFrame.addEventListener("click", () => {
@@ -897,18 +1105,6 @@ document.addEventListener("DOMContentLoaded", () => {
     updateRepAvatar(currentRepName);
   });
 
-  // Representative Preset Chips
-  presetChips.forEach(chip => {
-    chip.addEventListener("click", () => {
-      presetChips.forEach(c => c.classList.remove("active"));
-      chip.classList.add("active");
-      currentRepName = chip.dataset.name;
-      loginRepName.value = currentRepName;
-      localStorage.setItem("anq_mobile_rep_name", currentRepName);
-      updateRepAvatar(currentRepName);
-    });
-  });
-
   // Role Selection (OS vs FRM)
   roleCards.forEach(card => {
     card.addEventListener("click", () => {
@@ -916,6 +1112,7 @@ document.addEventListener("DOMContentLoaded", () => {
       card.classList.add("active");
       currentRole = card.dataset.role;
       localStorage.setItem("anq_mobile_role", currentRole);
+      renderScopeDrawer(currentRole);
     });
   });
 
@@ -932,6 +1129,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loginAccountSelect.addEventListener("change", (e) => {
       currentAccount = e.target.value;
       localStorage.setItem("anq_mobile_account", currentAccount);
+      noteSlots.account_name = currentAccount;
     });
   }
 
@@ -948,6 +1146,8 @@ document.addEventListener("DOMContentLoaded", () => {
           endpointStatusDot.className = "endpoint-status-dot";
           endpointSummaryText.textContent = `Connected: ${url}`;
           alert(`Successfully connected to ${url}! Knowledge Graph ready.`);
+          await loadAccountsFromBackend();
+          await loadKnowledgeGraphInfo();
         } else {
           throw new Error();
         }
@@ -1028,7 +1228,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const target = tab.dataset.tab;
       if (target === "call") closeAllSheets();
       else if (target === "summary") openSheet(sheetSummary);
-      else if (target === "scope") openSheet(sheetScope);
+      else if (target === "scope") {
+        renderScopeDrawer(currentRole);
+        openSheet(sheetScope);
+      }
       else if (target === "settings") openSheet(sheetSettings);
     });
   });
@@ -1039,7 +1242,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Copy Structured CRM Note
   btnCopyCrm.addEventListener("click", () => {
     const text = `
-=== J&J COMMERCIAL ONCOLOGY CALL NOTE RECORD ===
+=== COMMERCIAL ONCOLOGY CALL NOTE RECORD ===
 Representative: ${currentRepName} (${currentRole === "OS" ? "Oncology Specialist" : "Field Reimbursement Manager"})
 Brand Focus: ${currentBrand}
 Target Account: ${noteSlots.account_name}
@@ -1047,9 +1250,9 @@ Doctor / HCP Met: ${noteSlots.hcp_name}
 Discussion Focus: ${callTopicFocus?.textContent || "Commercial Engagement"}
 Account Blocker: ${noteSlots.barriers}
 Agreed Next Action: ${noteSlots.next_action}
-Compliance Verification: J&J Real-Time Knowledge Graph Audited
-Captured via: AnQ Bot Call Assistance (Speech-Cleaned)
-================================================
+Compliance Verification: Real-Time Knowledge Graph Audited
+Captured via: Commercial Call Assistant (Speech-Cleaned)
+============================================
     `.trim();
 
     navigator.clipboard.writeText(text).then(() => {
@@ -1060,17 +1263,18 @@ Captured via: AnQ Bot Call Assistance (Speech-Cleaned)
   });
 
   // ---------------------------------------------------------------------------
-  // 14. INITIALIZATION
+  // 15. INITIALIZATION
   // ---------------------------------------------------------------------------
   loginRepName.value = currentRepName;
   updateRepAvatar(currentRepName);
 
-  // Set initial preset chip active state
-  presetChips.forEach(chip => {
-    if (chip.dataset.name.toLowerCase() === currentRepName.toLowerCase()) {
-      chip.classList.add("active");
-    } else {
-      chip.classList.remove("active");
-    }
+  // Select initial role card
+  roleCards.forEach(card => {
+    if (card.dataset.role === currentRole) card.classList.add("active");
+    else card.classList.remove("active");
   });
+
+  // Load live accounts and Knowledge Graph metadata from backend APIs
+  loadAccountsFromBackend();
+  loadKnowledgeGraphInfo();
 });

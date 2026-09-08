@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#FFFFFF">
-  <title>AnQ Bot | J&J Commercial Oncology Call Assistance</title>
+  <title>AnQ Bot | Commercial Oncology Call Assistance</title>
   
   <!-- Modern Typography from Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -40,12 +40,12 @@
       <!-- CLEAN TOP APP BAR -->
       <header class="device-top-bar">
         <div class="top-bar-brand">
-          <span class="top-bar-logo">J&amp;J <span>INNOVATIVE MEDICINE</span></span>
+          <span class="top-bar-logo">COMMERCIAL <span>AI ASSISTANT</span></span>
           <span class="top-bar-division">ONCOLOGY</span>
         </div>
         <div class="top-bar-status">
-          <span class="status-dot-pulse"></span>
-          <span>Ready</span>
+          <span class="status-dot-pulse" id="top-status-dot"></span>
+          <span id="top-status-text">Connected</span>
         </div>
       </header>
 
@@ -68,13 +68,13 @@
               </div>
               <h1 class="login-title-simple">Call Assistance Setup</h1>
               <p class="login-desc-simple">
-                Voice capture grounded in J&amp;J Commercial Knowledge Graphs &amp; live speech autocorrection.
+                Voice capture grounded in Commercial Knowledge Graphs with real-time speech autocorrection.
               </p>
             </div>
 
             <!-- Representative Card with LIVE DYNAMIC AVATAR INITIAL CIRCLE -->
             <div class="rep-identity-card">
-              <!-- Dynamic Avatar Circle: Defaults to 'M' for 'Mihit', updates live on keystroke -->
+              <!-- Dynamic Avatar Circle: Defaults to rep initials, updates live on keystroke -->
               <div class="rep-avatar-circle" id="login-avatar-circle">M</div>
               <div class="rep-input-meta">
                 <label for="login-rep-name" class="rep-input-label">Representative Name</label>
@@ -82,7 +82,7 @@
                   type="text" 
                   id="login-rep-name" 
                   class="rep-name-input" 
-                  placeholder="Enter representative name" 
+                  placeholder="Enter representative name (e.g. Mihit)" 
                   value="Mihit" 
                   required 
                   autocomplete="name"
@@ -90,14 +90,7 @@
               </div>
             </div>
 
-            <!-- Quick Representative Preset Chips -->
-            <div class="quick-name-chips">
-              <span class="name-chip active" data-name="Mihit">Mihit</span>
-              <span class="name-chip" data-name="Lisa Martinez">Lisa Martinez</span>
-              <span class="name-chip" data-name="Dr. Anurag Verma">Dr. Anurag Verma</span>
-            </div>
-
-            <!-- Simple Persona Selection (OS vs FRM) -->
+            <!-- Commercial Persona Selection (OS vs FRM) -->
             <div>
               <label class="form-label-simple">Commercial Persona Role</label>
               <div class="role-cards-grid">
@@ -106,14 +99,14 @@
                 <div class="simple-role-card active" data-role="OS" id="role-card-os">
                   <span class="role-pill-tag os">OS Sales</span>
                   <div class="simple-role-title">Oncology Specialist</div>
-                  <div class="simple-role-desc">Efficacy, clinical trials, NMIBC &amp; NSCLC doctors.</div>
+                  <div class="simple-role-desc">Clinical efficacy, trial evidence, doctor engagement.</div>
                 </div>
 
                 <!-- FRM Card -->
                 <div class="simple-role-card" data-role="FRM" id="role-card-frm">
                   <span class="role-pill-tag frm">FRM Access</span>
                   <div class="simple-role-title">Reimbursement Mgr</div>
-                  <div class="simple-role-desc">Payer policies, prior auth barriers &amp; hub access.</div>
+                  <div class="simple-role-desc">Payer policies, prior auth resolution &amp; patient access.</div>
                 </div>
 
               </div>
@@ -129,25 +122,20 @@
               </select>
             </div>
 
-            <!-- Healthcare Account Selection -->
+            <!-- Healthcare Account Selection (Dynamically loaded from /api/accounts/barriers) -->
             <div>
               <label for="login-account-select" class="form-label-simple">Healthcare Account / Site</label>
               <select id="login-account-select" class="simple-select-field">
-                <option value="Atlantic Urology Associates" selected>Atlantic Urology Associates</option>
-                <option value="Northside Urology">Northside Urology</option>
-                <option value="Capital Bladder Cancer Center">Capital Bladder Cancer Center</option>
-                <option value="Central Ohio Urology">Central Ohio Urology</option>
-                <option value="Apollo Hospitals">Apollo Hospitals</option>
-                <option value="Memorial Cancer Institute">Memorial Cancer Institute</option>
+                <option value="" disabled selected>Loading healthcare accounts from backend...</option>
               </select>
             </div>
 
-            <!-- Optional Endpoint Config Accordion -->
+            <!-- Optional Server Endpoint Config Accordion -->
             <div class="endpoint-config-accordion">
               <div class="endpoint-summary-row" id="endpoint-summary-toggle">
                 <div>
                   <span class="endpoint-status-dot" id="endpoint-status-dot"></span>
-                  <span id="endpoint-summary-text">Connected: Local Server</span>
+                  <span id="endpoint-summary-text">Connected: Live Server</span>
                 </div>
                 <span style="font-size: 11px; font-weight: 700; color: var(--primary-blue);">Settings &darr;</span>
               </div>
@@ -156,9 +144,9 @@
                   type="text" 
                   id="endpoint-input" 
                   class="simple-select-field" 
-                  placeholder="http://localhost:8080 or remote server" 
+                  placeholder="http://localhost:8006 or current host" 
                 />
-                <button class="name-chip" id="btn-test-endpoint" type="button" style="margin-top:6px;">Test Ping</button>
+                <button class="btn-ping-endpoint" id="btn-test-endpoint" type="button">Test Ping</button>
               </div>
             </div>
 
@@ -188,7 +176,7 @@
               <div class="header-rep-text">
                 <span class="header-rep-name" id="header-rep-name">Mihit</span>
                 <div class="header-meta-chips">
-                  <span class="role-pill-tag os" id="header-role-pill">OS Commercial</span>
+                  <span class="role-pill-tag os" id="header-role-pill">OS Sales</span>
                   <span class="brand-chip-pill" id="header-brand-pill">INLEXZO®</span>
                 </div>
               </div>
@@ -326,7 +314,7 @@
             </div>
             <div class="note-field-row">
               <span class="note-field-key">Account / Site</span>
-              <span class="note-field-val" id="kv-account">Atlantic Urology Associates</span>
+              <span class="note-field-val" id="kv-account">—</span>
             </div>
             <div class="note-field-row">
               <span class="note-field-key">Doctor / HCP Met</span>
@@ -342,7 +330,7 @@
             </div>
 
             <button class="btn-sheet-action" id="btn-copy-crm" type="button">
-              <span>📋 Copy Structured Veeva CRM Note</span>
+              <span>📋 Copy Structured CRM Note</span>
             </button>
 
           </div>
@@ -351,7 +339,7 @@
 
 
       <!-- ===================================================================
-           BOTTOM SHEET 2: KNOWLEDGE GRAPH SCOPE DRAWER
+           BOTTOM SHEET 2: KNOWLEDGE GRAPH SCOPE DRAWER (DYNAMIC)
            =================================================================== -->
       <div class="clean-modal-sheet" id="sheet-scope">
         <div class="sheet-white-card">
@@ -360,22 +348,9 @@
             <span class="sheet-heading">🛡️ Role Policy &amp; Scope Governance</span>
             <button class="btn-close-sheet" type="button">&times;</button>
           </div>
-          <div class="sheet-body-content">
-            
-            <div style="font-size:12px; font-weight:700; color:var(--success-green); margin-bottom:4px;">
-              ✓ Permitted In-Scope Topics:
-            </div>
-            <div style="font-size:12px; color:var(--text-secondary); line-height:1.5; background:var(--bg-surface); padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light);">
-              Clinical trial efficacy, NMIBC &amp; NSCLC indication alignment, doctor engagement, diagnostic pathway criteria, practice follow-up scheduling.
-            </div>
-
-            <div style="font-size:12px; font-weight:700; color:#DC2626; margin-top:10px; margin-bottom:4px;">
-              ✕ Out-of-Scope Compliance Boundaries:
-            </div>
-            <div style="font-size:12px; color:var(--text-secondary); line-height:1.5; background:var(--bg-surface); padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light);">
-              Off-label promotion, patient identifiable data (PHI/PII), unapproved indications, pricing negotiations without Market Access approval.
-            </div>
-
+          <div class="sheet-body-content" id="scope-sheet-content">
+            <!-- Dynamically populated from /api/kg/info -->
+            <div style="font-size:12px; color:var(--text-muted);">Loading role governance policies...</div>
           </div>
         </div>
       </div>
@@ -399,15 +374,19 @@
             </div>
             <div class="note-field-row">
               <span class="note-field-key">Medical Autocorrection</span>
-              <span class="note-field-val" style="color:var(--success-green);">Enabled (Phonetic J&amp;J Lexicon)</span>
+              <span class="note-field-val" style="color:var(--success-green);">Enabled (Phonetic Medical Lexicon)</span>
             </div>
             <div class="note-field-row">
-              <span class="note-field-key">Default Bot Voice</span>
-              <span class="note-field-val">Michael (FlowEdit)</span>
+              <span class="note-field-key">Voice Persona</span>
+              <span class="note-field-val" id="settings-voice-val">Michael (FlowEdit TTS)</span>
             </div>
             <div class="note-field-row">
-              <span class="note-field-key">Inference Acceleration</span>
-              <span class="note-field-val" style="color:var(--primary-blue);">Sub-100ms TensorRT</span>
+              <span class="note-field-key">Speech Recognition</span>
+              <span class="note-field-val" style="color:var(--primary-blue);">Whisper STT (Local CUDA)</span>
+            </div>
+            <div class="note-field-row">
+              <span class="note-field-key">Model Engine</span>
+              <span class="note-field-val" style="color:var(--primary-blue);">KG-Conditioned SLM</span>
             </div>
 
           </div>
