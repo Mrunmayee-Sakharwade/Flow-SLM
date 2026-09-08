@@ -1,0 +1,18 @@
+{
+  "total_evaluated": 1000,
+  "compliance_rate": 100.0,
+  "exclusion_avoidance_rate": 100.0,
+  "avg_f1_score": 0.1936,
+  "role_breakdown": {
+    "OS": {
+      "samples": 508,
+      "compliance_rate": 100.0,
+      "avg_f1": 0.1777
+    },
+    "FRM": {
+      "samples": 492,
+      "compliance_rate": 100.0,
+      "avg_f1": 0.21
+    }
+  }
+}

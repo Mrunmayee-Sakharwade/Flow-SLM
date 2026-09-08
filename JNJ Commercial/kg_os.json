@@ -1,0 +1,948 @@
+{
+  "schema_version": "3.0",
+  "description": "Dedicated Knowledge Graph for Johnson & Johnson OS Commercial Oncology Operations with Embedded Account Barrier Intelligence.",
+  "role": "OS",
+  "primary_domain": "commercial_promotional",
+  "node_labels": [
+    "Role",
+    "Domain",
+    "Topic",
+    "CoreResponsibility",
+    "ExclusionRule",
+    "DocumentationRule",
+    "CollaborationRule",
+    "ComplianceRule",
+    "Account",
+    "AccountBarrier"
+  ],
+  "edge_types": [
+    "EXCLUDES_TOPIC",
+    "GOVERNS_ROLE",
+    "HAS_OUT_OF_SCOPE_TOPIC",
+    "HAS_EXCLUSION_RULE",
+    "HAS_DOCUMENTATION_RULE",
+    "ENGAGES_ACCOUNT",
+    "ABOUT_TOPIC",
+    "OPERATES_IN",
+    "HAS_COLLABORATION_RULE",
+    "HAS_RESPONSIBILITY",
+    "HAS_IN_SCOPE_TOPIC",
+    "RELATES_TO_TOPIC",
+    "HAS_ACCOUNT_BARRIER",
+    "GOVERNED_BY"
+  ],
+  "nodes": [
+    {
+      "id": "role:OS",
+      "label": "Role",
+      "properties": {
+        "name": "OS",
+        "full_name": "Oncology Sales Representative",
+        "description": "The Oncology Sales (OS) Representative is a customer-facing commercial professional responsible for engaging healthcare professionals (HCPs) to communicate approved product information, understand customer needs, support the appropriate use of approved products within the approved indication, and build professional relationships through compliant promotional interactions. The OS Representative discusses approved product information, clinical evidence, efficacy, safety within promotional scope, treatment positioning, patient identification opportunities, customer feedback, and competitive insights while adhering to commercial and regulatory guidelines.",
+        "primary_domain": "commercial_promotional"
+      }
+    },
+    {
+      "id": "domain:commercial_promotional",
+      "label": "Domain",
+      "properties": {
+        "name": "Commercial / promotional engagement"
+      }
+    },
+    {
+      "id": "topic:adverse_events_safety",
+      "label": "Topic",
+      "properties": {
+        "name": "adverse events safety"
+      }
+    },
+    {
+      "id": "topic:toxicity_management",
+      "label": "Topic",
+      "properties": {
+        "name": "toxicity management"
+      }
+    },
+    {
+      "id": "topic:dosing_administration",
+      "label": "Topic",
+      "properties": {
+        "name": "dosing administration"
+      }
+    },
+    {
+      "id": "topic:treatment_sequencing",
+      "label": "Topic",
+      "properties": {
+        "name": "treatment sequencing"
+      }
+    },
+    {
+      "id": "topic:relationship_building",
+      "label": "Topic",
+      "properties": {
+        "name": "relationship building"
+      }
+    },
+    {
+      "id": "topic:territory_engagement_planning",
+      "label": "Topic",
+      "properties": {
+        "name": "territory engagement planning"
+      }
+    },
+    {
+      "id": "topic:stakeholder_management",
+      "label": "Topic",
+      "properties": {
+        "name": "stakeholder management"
+      }
+    },
+    {
+      "id": "topic:efficacy_safety_product_info",
+      "label": "Topic",
+      "properties": {
+        "name": "efficacy safety product info"
+      }
+    },
+    {
+      "id": "topic:cross_functional_collaboration",
+      "label": "Topic",
+      "properties": {
+        "name": "cross functional collaboration"
+      }
+    },
+    {
+      "id": "topic:competitive_landscape",
+      "label": "Topic",
+      "properties": {
+        "name": "competitive landscape"
+      }
+    },
+    {
+      "id": "rule:privacy_phi_pii",
+      "label": "ComplianceRule",
+      "properties": {
+        "rule_type": "privacy_rule",
+        "name": "PHI/PII protection",
+        "action": "exclude_redact",
+        "severity": "mandatory",
+        "summary": "Exclude Protected Health Information, PII, and any patient-identifying details from summaries.",
+        "topics": [
+          "phi_pii_privacy"
+        ]
+      }
+    },
+    {
+      "id": "rule:mir_handling",
+      "label": "ComplianceRule",
+      "properties": {
+        "rule_type": "mir_handling",
+        "name": "Medical Information Request capture",
+        "action": "capture_administrative_only",
+        "severity": "mandatory",
+        "summary": "Capture MIRs only as administrative interactions (ID, neutral topic, response method, triage status) without clinical content.",
+        "topics": [
+          "mir_handling"
+        ]
+      }
+    },
+    {
+      "id": "rule:toxicity_language_control",
+      "label": "ComplianceRule",
+      "properties": {
+        "rule_type": "language_control",
+        "name": "Toxicity language control",
+        "action": "rephrase",
+        "severity": "mandatory",
+        "summary": "Replace the word 'toxicity' with 'safety concerns' in generated call summaries.",
+        "topics": [
+          "toxicity_management"
+        ]
+      }
+    },
+    {
+      "id": "resp:OS:1",
+      "label": "CoreResponsibility",
+      "properties": {
+        "text": "Building and maintaining professional relationships with oncologists, hematologists, advanced practice providers, pharmacists, nurses, and other relevant healthcare professionals.",
+        "category": "core",
+        "domain": "commercial_promotional",
+        "topics": [
+          "relationship_building"
+        ]
+      }
+    },
+    {
+      "id": "resp:OS:2",
+      "label": "CoreResponsibility",
+      "properties": {
+        "text": "Conducting compliant scientific and promotional discussions regarding approved products, including indication, efficacy, safety, dosing, administration, and appropriate patient selection within the approved label.",
+        "category": "core",
+        "domain": "commercial_promotional",
+        "topics": [
+          "dosing_administration",
+          "efficacy_safety_product_info"
+        ]
+      }
+    },
+    {
+      "id": "resp:OS:3",
+      "label": "CoreResponsibility",
+      "properties": {
+        "text": "Understanding HCP treatment practices, prescribing behavior, clinical preferences, and educational needs related to approved products.",
+        "category": "core",
+        "domain": "commercial_promotional",
+        "topics": [
+          "treatment_sequencing"
+        ]
+      }
+    },
+    {
+      "id": "resp:OS:4",
+      "label": "CoreResponsibility",
+      "properties": {
+        "text": "Identifying opportunities for appropriate product utilization based on customer discussions and approved product positioning.",
+        "category": "core",
+        "domain": "commercial_promotional",
+        "topics": []
+      }
+    },
+    {
+      "id": "resp:OS:5",
+      "label": "CoreResponsibility",
+      "properties": {
+        "text": "Discussing approved product information, including indications, clinical evidence, efficacy, safety within promotional scope, dosing, administration, patient identification, treatment positioning, and appropriate use of approved products.",
+        "category": "core",
+        "domain": "commercial_promotional",
+        "topics": [
+          "dosing_administration",
+          "treatment_sequencing",
+          "efficacy_safety_product_info"
+        ]
+      }
+    },
+    {
+      "id": "resp:OS:6",
+      "label": "CoreResponsibility",
+      "properties": {
+        "text": "Addressing customer questions within promotional scope and facilitating appropriate follow-up through Medical Affairs or other internal partners when discussions extend beyond promotional boundaries.",
+        "category": "core",
+        "domain": "commercial_promotional",
+        "topics": []
+      }
+    },
+    {
+      "id": "resp:OS:7",
+      "label": "CoreResponsibility",
+      "properties": {
+        "text": "Gathering customer insights regarding HCP clinical practice, treatment preferences, customer feedback, educational needs, and competitive landscape within the promotional scope of approved products.",
+        "category": "core",
+        "domain": "commercial_promotional",
+        "topics": [
+          "competitive_landscape"
+        ]
+      }
+    },
+    {
+      "id": "resp:OS:8",
+      "label": "CollaborationRule",
+      "properties": {
+        "text": "Collaborating with cross-functional partners (such as Medical Science Liaisons, FRM, KAM, and other internal stakeholders) to support customer needs while remaining within defined functional responsibilities.",
+        "category": "collaboration",
+        "domain": "commercial_promotional",
+        "topics": [
+          "stakeholder_management",
+          "cross_functional_collaboration"
+        ]
+      }
+    },
+    {
+      "id": "resp:OS:9",
+      "label": "CoreResponsibility",
+      "properties": {
+        "text": "Identifying opportunities for appropriate product utilization based on HCP discussions regarding approved product use and customer needs.",
+        "category": "core",
+        "domain": "commercial_promotional",
+        "topics": []
+      }
+    },
+    {
+      "id": "resp:OS:10",
+      "label": "CoreResponsibility",
+      "properties": {
+        "text": "Planning and executing customer engagements aligned with territory objectives and customer priorities.",
+        "category": "core",
+        "domain": "commercial_promotional",
+        "topics": [
+          "territory_engagement_planning"
+        ]
+      }
+    },
+    {
+      "id": "resp:OS:11",
+      "label": "DocumentationRule",
+      "properties": {
+        "text": "Documenting customer interactions accurately and compliantly.",
+        "category": "documentation",
+        "domain": "commercial_promotional",
+        "topics": []
+      }
+    },
+    {
+      "id": "resp:OS:12",
+      "label": "ExclusionRule",
+      "properties": {
+        "text": "Exclude all adverse event, safety, protocol-related, toxicity management, administration protocol, and clinical management discussions from the summary. Such information is outside the Oncology Sales (OS) commercial scope and should not be shared with commercial field members. If appeared in the call summary, treat it only as information requiring appropriate reporting or routing per policy, without summarizing or referencing the clinical content.",
+        "category": "exclusion",
+        "domain": "commercial_promotional",
+        "topics": [
+          "adverse_events_safety",
+          "toxicity_management",
+          "dosing_administration"
+        ],
+        "reason": "outside the Oncology Sales (OS) commercial scope and should not be shared with commercial field members."
+      }
+    },
+    {
+      "id": "account:apollo_hospitals",
+      "label": "Account",
+      "properties": {
+        "name": "Apollo Hospitals",
+        "canonical_name": "Apollo Hospitals",
+        "city": "Chennai / Multi-city",
+        "type": "Private Healthcare Network",
+        "oncology_specialties": [
+          "Urologic Oncology",
+          "Thoracic Oncology",
+          "Medical Oncology"
+        ]
+      }
+    },
+    {
+      "id": "account:fortis_healthcare",
+      "label": "Account",
+      "properties": {
+        "name": "Fortis Healthcare",
+        "canonical_name": "Fortis Healthcare",
+        "city": "Gurugram / Multi-city",
+        "type": "Tertiary Hospital Network",
+        "oncology_specialties": [
+          "Surgical Oncology",
+          "Precision Medicine",
+          "Thoracic Oncology"
+        ]
+      }
+    },
+    {
+      "id": "account:manipal_hospitals",
+      "label": "Account",
+      "properties": {
+        "name": "Manipal Hospitals",
+        "canonical_name": "Manipal Hospitals",
+        "city": "Bengaluru / Multi-city",
+        "type": "Comprehensive Cancer Center",
+        "oncology_specialties": [
+          "Urologic Oncology",
+          "Medical Oncology",
+          "Infusion Services"
+        ]
+      }
+    },
+    {
+      "id": "account:max_healthcare",
+      "label": "Account",
+      "properties": {
+        "name": "Max Healthcare",
+        "canonical_name": "Max Healthcare",
+        "city": "Delhi NCR / Multi-city",
+        "type": "Quaternary Care Hospital System",
+        "oncology_specialties": [
+          "Thoracic Oncology",
+          "Urology & Kidney Transplant",
+          "Pathology Lab"
+        ]
+      }
+    },
+    {
+      "id": "account:narayana_health",
+      "label": "Account",
+      "properties": {
+        "name": "Narayana Health",
+        "canonical_name": "Narayana Health",
+        "city": "Bengaluru / Multi-city",
+        "type": "Integrated Health Network",
+        "oncology_specialties": [
+          "Medical Oncology",
+          "Radiation Oncology",
+          "Urologic Oncology"
+        ]
+      }
+    },
+    {
+      "id": "barrier:os:apollo_hospitals",
+      "label": "AccountBarrier",
+      "properties": {
+        "account": "Apollo Hospitals",
+        "account_id": "account:apollo_hospitals",
+        "role": "OS",
+        "barrier_type": "Patient Identification Barrier",
+        "barrier_details": "They are seeing very few eligible patients right now, so the team is not confident they can operationalize the pathway consistently. They asked for a simple way to recognize and flag potential candidates as they appear.",
+        "trigger_keywords": [
+          "few eligible patients",
+          "eligible patients",
+          "operationalize",
+          "pathway consistently",
+          "flag potential candidates",
+          "flag candidates",
+          "recognize candidates",
+          "patient identification",
+          "few candidates",
+          "low patient volume",
+          "operationalize the pathway",
+          "pathway friction"
+        ],
+        "account_ask": "A simple way to recognize and flag potential candidates as they appear.",
+        "case_1_inquiry": "Given the difficulty operationalizing the pathway at Apollo Hospitals, did you and {hcp} discuss implementing a streamlined criteria or flagging tool to identify candidates as they appear?",
+        "case_2_inquiry": "Regarding account pathway operations at Apollo Hospitals: historical feedback noted seeing few eligible patients and needing a simple way to operationalize the pathway. Did {hcp} or the team mention any friction identifying or flagging eligible candidates today?"
+      }
+    },
+    {
+      "id": "barrier:os:fortis_healthcare",
+      "label": "AccountBarrier",
+      "properties": {
+        "account": "Fortis Healthcare",
+        "account_id": "account:fortis_healthcare",
+        "role": "OS",
+        "barrier_type": "Patient Identification Barrier",
+        "barrier_details": "Biomarker testing and/or results are sometimes delayed, which slows down patient identification in their pathway. The team asked to align internally on where testing fits in their workflow and who owns tracking results.",
+        "trigger_keywords": [
+          "biomarker",
+          "biomarker testing",
+          "results delayed",
+          "delayed testing",
+          "slows down patient identification",
+          "align internally",
+          "workflow testing",
+          "who owns tracking",
+          "tracking results",
+          "testing turnaround",
+          "molecular results"
+        ],
+        "account_ask": "Align internally on where testing fits in their workflow and who owns tracking results.",
+        "case_1_inquiry": "Regarding the biomarker testing delays at Fortis Healthcare, did you and the team align internally on where testing fits in their clinical workflow and who owns tracking the results?",
+        "case_2_inquiry": "In terms of clinical workflow, Fortis Healthcare previously experienced biomarker testing turnaround delays. Did {hcp} mention whether testing delays are currently impacting patient identification, or who tracks the results?"
+      }
+    },
+    {
+      "id": "barrier:os:manipal_hospitals",
+      "label": "AccountBarrier",
+      "properties": {
+        "account": "Manipal Hospitals",
+        "account_id": "account:manipal_hospitals",
+        "role": "OS",
+        "barrier_type": "Patient Identification Barrier",
+        "barrier_details": "Key steps in their diagnosis-to-treatment pathway are taking longer than expected due to scheduling and coordination, which delays next-step decisions. The team wants clearer handoffs so potential candidates are identified and routed sooner.",
+        "trigger_keywords": [
+          "scheduling and coordination",
+          "diagnosis-to-treatment",
+          "taking longer",
+          "delays next-step decisions",
+          "clearer handoffs",
+          "routed sooner",
+          "scheduling delays",
+          "coordination delays",
+          "handoff delays",
+          "candidate routing"
+        ],
+        "account_ask": "Clearer handoffs so potential candidates are identified and routed sooner.",
+        "case_1_inquiry": "With diagnosis-to-treatment scheduling delays at Manipal Hospitals, did you and the team establish clearer handoffs so potential candidates can be identified and routed sooner?",
+        "case_2_inquiry": "At Manipal Hospitals, scheduling and coordination across the diagnosis-to-treatment pathway have previously delayed next-step decisions. Did {hcp} mention any scheduling friction or need for clearer candidate routing handoffs today?"
+      }
+    },
+    {
+      "id": "barrier:os:max_healthcare",
+      "label": "AccountBarrier",
+      "properties": {
+        "account": "Max Healthcare",
+        "account_id": "account:max_healthcare",
+        "role": "OS",
+        "barrier_type": "Patient Identification Barrier",
+        "barrier_details": "There are delays in the diagnostic workup and internal handoffs, so potential candidates are identified late in the process. The team wants a cleaner pathway with fewer missed handoffs between roles.",
+        "trigger_keywords": [
+          "diagnostic workup",
+          "internal handoffs",
+          "identified late",
+          "cleaner pathway",
+          "fewer missed handoffs",
+          "missed handoffs",
+          "between roles",
+          "diagnostic delays",
+          "late identification",
+          "workup delays"
+        ],
+        "account_ask": "A cleaner pathway with fewer missed handoffs between roles.",
+        "case_1_inquiry": "Given the diagnostic workup delays at Max Healthcare, did you discuss creating a cleaner pathway with fewer missed handoffs between diagnostic and clinical roles?",
+        "case_2_inquiry": "Regarding workflow coordination, Max Healthcare has previously seen diagnostic workup delays and late candidate identification. Did {hcp} mention any internal handoff friction or missed handoffs between roles today?"
+      }
+    },
+    {
+      "id": "barrier:os:narayana_health",
+      "label": "AccountBarrier",
+      "properties": {
+        "account": "Narayana Health",
+        "account_id": "account:narayana_health",
+        "role": "OS",
+        "barrier_type": "Patient Identification Barrier",
+        "barrier_details": "The site is not consistently identifying potential candidates in their current workflow. They want a simple way to flag appropriate patients earlier without adding extra burden to clinic staff.",
+        "trigger_keywords": [
+          "not consistently identifying",
+          "current workflow",
+          "flag appropriate patients earlier",
+          "flag earlier",
+          "extra burden",
+          "burden to clinic staff",
+          "clinic staff burden",
+          "staff burden",
+          "simpler way to flag",
+          "burdening clinic staff"
+        ],
+        "account_ask": "A simple way to flag appropriate patients earlier without adding extra burden to clinic staff.",
+        "case_1_inquiry": "Given that candidate identification has been inconsistent at Narayana Health, did you explore a simplified way to flag appropriate patients earlier without burdening clinic staff?",
+        "case_2_inquiry": "Narayana Health has previously sought an easier way to flag eligible candidates earlier without adding burden to clinic staff. Did patient identification or workflow burden come up during your discussion today?"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "role:OS",
+      "target": "domain:commercial_promotional",
+      "type": "OPERATES_IN",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "resp:OS:1",
+      "type": "HAS_RESPONSIBILITY",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:1",
+      "target": "topic:relationship_building",
+      "type": "ABOUT_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "resp:OS:2",
+      "type": "HAS_RESPONSIBILITY",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:2",
+      "target": "topic:dosing_administration",
+      "type": "ABOUT_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:2",
+      "target": "topic:efficacy_safety_product_info",
+      "type": "ABOUT_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "resp:OS:3",
+      "type": "HAS_RESPONSIBILITY",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:3",
+      "target": "topic:treatment_sequencing",
+      "type": "ABOUT_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "resp:OS:4",
+      "type": "HAS_RESPONSIBILITY",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "resp:OS:5",
+      "type": "HAS_RESPONSIBILITY",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:5",
+      "target": "topic:dosing_administration",
+      "type": "ABOUT_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:5",
+      "target": "topic:treatment_sequencing",
+      "type": "ABOUT_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:5",
+      "target": "topic:efficacy_safety_product_info",
+      "type": "ABOUT_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "resp:OS:6",
+      "type": "HAS_RESPONSIBILITY",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "resp:OS:7",
+      "type": "HAS_RESPONSIBILITY",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:7",
+      "target": "topic:competitive_landscape",
+      "type": "ABOUT_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "resp:OS:8",
+      "type": "HAS_COLLABORATION_RULE",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:8",
+      "target": "topic:stakeholder_management",
+      "type": "RELATES_TO_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:8",
+      "target": "topic:cross_functional_collaboration",
+      "type": "RELATES_TO_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "resp:OS:9",
+      "type": "HAS_RESPONSIBILITY",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "resp:OS:10",
+      "type": "HAS_RESPONSIBILITY",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:10",
+      "target": "topic:territory_engagement_planning",
+      "type": "ABOUT_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "resp:OS:11",
+      "type": "HAS_DOCUMENTATION_RULE",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "resp:OS:12",
+      "type": "HAS_EXCLUSION_RULE",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:12",
+      "target": "topic:adverse_events_safety",
+      "type": "EXCLUDES_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:12",
+      "target": "topic:toxicity_management",
+      "type": "EXCLUDES_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "resp:OS:12",
+      "target": "topic:dosing_administration",
+      "type": "EXCLUDES_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "rule:mir_handling",
+      "type": "GOVERNED_BY",
+      "properties": {
+        "variant_text": "Capturing Medical Information Requests (MIRs) only as administrative interactions by recording the MIR ID (if available), a neutral non-clinical topic, the HCP's preferred response method, and the high-level triage status. Never include the clinical question, protocol specifics, or any Medical Information response content."
+      }
+    },
+    {
+      "source": "role:OS",
+      "target": "rule:privacy_phi_pii",
+      "type": "GOVERNED_BY",
+      "properties": {
+        "variant_text": "Protecting patient privacy by excluding Protected Health Information (PHI), personally identifiable information (PII), patient-specific details, identifiable contact information, images, file metadata, or any information that could directly or indirectly identify an individual."
+      }
+    },
+    {
+      "source": "role:OS",
+      "target": "rule:toxicity_language_control",
+      "type": "GOVERNED_BY",
+      "properties": {
+        "variant_text": "Apply language control in call summaries: If the word \"toxicity\" appears in the call summary, replace or rephrase it to \"safety concerns\" in the generated summary. Do not use \"toxicity\"."
+      }
+    },
+    {
+      "source": "role:OS",
+      "target": "topic:competitive_landscape",
+      "type": "HAS_IN_SCOPE_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "topic:cross_functional_collaboration",
+      "type": "HAS_IN_SCOPE_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "topic:dosing_administration",
+      "type": "HAS_IN_SCOPE_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "topic:efficacy_safety_product_info",
+      "type": "HAS_IN_SCOPE_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "topic:relationship_building",
+      "type": "HAS_IN_SCOPE_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "topic:stakeholder_management",
+      "type": "HAS_IN_SCOPE_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "topic:territory_engagement_planning",
+      "type": "HAS_IN_SCOPE_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "topic:treatment_sequencing",
+      "type": "HAS_IN_SCOPE_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "topic:adverse_events_safety",
+      "type": "HAS_OUT_OF_SCOPE_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "topic:dosing_administration",
+      "type": "HAS_OUT_OF_SCOPE_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "topic:toxicity_management",
+      "type": "HAS_OUT_OF_SCOPE_TOPIC",
+      "properties": {}
+    },
+    {
+      "source": "role:OS",
+      "target": "account:apollo_hospitals",
+      "type": "ENGAGES_ACCOUNT",
+      "properties": {
+        "role": "OS",
+        "account": "Apollo Hospitals"
+      }
+    },
+    {
+      "source": "role:OS",
+      "target": "account:fortis_healthcare",
+      "type": "ENGAGES_ACCOUNT",
+      "properties": {
+        "role": "OS",
+        "account": "Fortis Healthcare"
+      }
+    },
+    {
+      "source": "role:OS",
+      "target": "account:manipal_hospitals",
+      "type": "ENGAGES_ACCOUNT",
+      "properties": {
+        "role": "OS",
+        "account": "Manipal Hospitals"
+      }
+    },
+    {
+      "source": "role:OS",
+      "target": "account:max_healthcare",
+      "type": "ENGAGES_ACCOUNT",
+      "properties": {
+        "role": "OS",
+        "account": "Max Healthcare"
+      }
+    },
+    {
+      "source": "role:OS",
+      "target": "account:narayana_health",
+      "type": "ENGAGES_ACCOUNT",
+      "properties": {
+        "role": "OS",
+        "account": "Narayana Health"
+      }
+    },
+    {
+      "source": "account:apollo_hospitals",
+      "target": "barrier:os:apollo_hospitals",
+      "type": "HAS_ACCOUNT_BARRIER",
+      "properties": {
+        "barrier_type": "Patient Identification Barrier",
+        "role": "OS"
+      }
+    },
+    {
+      "source": "barrier:os:apollo_hospitals",
+      "target": "role:OS",
+      "type": "GOVERNS_ROLE",
+      "properties": {
+        "barrier_type": "Patient Identification Barrier"
+      }
+    },
+    {
+      "source": "barrier:os:apollo_hospitals",
+      "target": "topic:treatment_sequencing",
+      "type": "RELATES_TO_TOPIC",
+      "properties": {
+        "topic": "treatment_sequencing"
+      }
+    },
+    {
+      "source": "account:fortis_healthcare",
+      "target": "barrier:os:fortis_healthcare",
+      "type": "HAS_ACCOUNT_BARRIER",
+      "properties": {
+        "barrier_type": "Patient Identification Barrier",
+        "role": "OS"
+      }
+    },
+    {
+      "source": "barrier:os:fortis_healthcare",
+      "target": "role:OS",
+      "type": "GOVERNS_ROLE",
+      "properties": {
+        "barrier_type": "Patient Identification Barrier"
+      }
+    },
+    {
+      "source": "barrier:os:fortis_healthcare",
+      "target": "topic:treatment_sequencing",
+      "type": "RELATES_TO_TOPIC",
+      "properties": {
+        "topic": "treatment_sequencing"
+      }
+    },
+    {
+      "source": "account:manipal_hospitals",
+      "target": "barrier:os:manipal_hospitals",
+      "type": "HAS_ACCOUNT_BARRIER",
+      "properties": {
+        "barrier_type": "Patient Identification Barrier",
+        "role": "OS"
+      }
+    },
+    {
+      "source": "barrier:os:manipal_hospitals",
+      "target": "role:OS",
+      "type": "GOVERNS_ROLE",
+      "properties": {
+        "barrier_type": "Patient Identification Barrier"
+      }
+    },
+    {
+      "source": "barrier:os:manipal_hospitals",
+      "target": "topic:treatment_sequencing",
+      "type": "RELATES_TO_TOPIC",
+      "properties": {
+        "topic": "treatment_sequencing"
+      }
+    },
+    {
+      "source": "account:max_healthcare",
+      "target": "barrier:os:max_healthcare",
+      "type": "HAS_ACCOUNT_BARRIER",
+      "properties": {
+        "barrier_type": "Patient Identification Barrier",
+        "role": "OS"
+      }
+    },
+    {
+      "source": "barrier:os:max_healthcare",
+      "target": "role:OS",
+      "type": "GOVERNS_ROLE",
+      "properties": {
+        "barrier_type": "Patient Identification Barrier"
+      }
+    },
+    {
+      "source": "barrier:os:max_healthcare",
+      "target": "topic:treatment_sequencing",
+      "type": "RELATES_TO_TOPIC",
+      "properties": {
+        "topic": "treatment_sequencing"
+      }
+    },
+    {
+      "source": "account:narayana_health",
+      "target": "barrier:os:narayana_health",
+      "type": "HAS_ACCOUNT_BARRIER",
+      "properties": {
+        "barrier_type": "Patient Identification Barrier",
+        "role": "OS"
+      }
+    },
+    {
+      "source": "barrier:os:narayana_health",
+      "target": "role:OS",
+      "type": "GOVERNS_ROLE",
+      "properties": {
+        "barrier_type": "Patient Identification Barrier"
+      }
+    },
+    {
+      "source": "barrier:os:narayana_health",
+      "target": "topic:treatment_sequencing",
+      "type": "RELATES_TO_TOPIC",
+      "properties": {
+        "topic": "treatment_sequencing"
+      }
+    }
+  ],
+  "statistics": {
+    "total_nodes": 37,
+    "total_edges": 61,
+    "accounts_indexed": 5,
+    "barriers_indexed": 5,
+    "responsibilities": 9,
+    "rules": 6
+  }
+}

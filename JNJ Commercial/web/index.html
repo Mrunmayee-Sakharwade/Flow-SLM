@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AnQ Bot | Commercial Oncology Call Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <!-- Mermaid.js for Dynamic Neo4j Knowledge Graph Visualizer -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+
+  <!-- =========================================================================
+       1. DEDICATED WELCOME & ONBOARDING SCREEN (Shown before workspace landing)
+       ========================================================================= -->
+  <div id="welcome-screen" class="welcome-screen-overlay">
+    <div class="welcome-container">
+      
+      <!-- Branding Header -->
+      <div class="welcome-header">
+        <div class="anq-logo-large">
+          <span class="logo-red">AnQ</span><span class="logo-dark">Bot</span>
+        </div>
+        <h1 class="welcome-title">Commercial Oncology Call Intelligence</h1>
+        <p class="welcome-subtitle">
+          AI-Powered Call Note Capture Grounded in Neo4j Commercial Knowledge Graphs & SLM Dialogue Guardrails
+        </p>
+      </div>
+
+      <!-- User Onboarding Form -->
+      <form id="welcome-form" class="welcome-form">
+        
+        <!-- Rep Name Input (NOT Hardcoded) -->
+        <div class="form-section">
+          <label for="welcome-rep-name" class="section-label">
+            Field Representative Name <span class="required-star">*</span>
+          </label>
+          <div class="input-icon-group">
+            <span class="input-icon">👤</span>
+            <input 
+              type="text" 
+              id="welcome-rep-name" 
+              class="welcome-input" 
+              placeholder="Enter your full name (e.g. Dr. Anurag Verma)" 
+              required 
+              autocomplete="name"
+            />
+          </div>
+          <span class="input-subtext">Your name will be used to personalize call capture and tag compliance audit logs.</span>
+        </div>
+
+        <!-- Role / Commercial Persona Selection Cards -->
+        <div class="form-section">
+          <label class="section-label">
+            Commercial Persona & Responsibility Scope <span class="required-star">*</span>
+          </label>
+          <div class="role-card-grid">
+            <div class="role-card active" id="card-role-os" data-role="OS">
+              <div class="role-card-badge os">OS &bull; Field Sales</div>
+              <h3 class="role-card-title">Oncology Specialist</h3>
+              <p class="role-card-desc">
+                Promotional clinical efficacy, indication criteria, treatment sequencing, and identifying eligible patient pathways.
+              </p>
+              <div class="role-card-tags">
+                <span>Efficacy & Safety</span>
+                <span>NMIBC / NSCLC</span>
+                <span>Doctor Engagement</span>
+              </div>
+            </div>
+
+            <div class="role-card" id="card-role-frm" data-role="FRM">
+              <div class="role-card-badge frm">FRM &bull; Market Access</div>
+              <h3 class="role-card-title">Field Reimbursement Manager</h3>
+              <p class="role-card-desc">
+                Payer policy navigation, prior authorization criteria, hub enrollment, and patient affordability support programs.
+              </p>
+              <div class="role-card-tags">
+                <span>Payer Coverage</span>
+                <span>Prior Auth / Appeals</span>
+                <span>Copay Support</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Assigned Brand Selection -->
+        <div class="form-section">
+          <label for="welcome-brand" class="section-label">
+            Assigned Oncology Brand <span class="required-star">*</span>
+          </label>
+          <select id="welcome-brand" class="welcome-select" required>
+            <option value="" disabled selected>-- Select Brand --</option>
+            <option value="INLEXZO">INLEXZO® (Targeted Urothelial)</option>
+            <option value="RYBREVANT">RYBREVANT® (Bispecific NSCLC)</option>
+            <option value="RYBREVANT + LAZCLUZE">RYBREVANT® + LAZCLUZE® (Combination Regimen)</option>
+          </select>
+          <span class="input-subtext">Target healthcare accounts and institutional friction are discovered dynamically during dialogue.</span>
+        </div>
+
+        <!-- Submit Button -->
+        <button type="submit" class="btn-welcome-submit" id="btn-welcome-submit">
+          <span>Enter Workspace & Start Call Note</span>
+          <span class="arrow">&rarr;</span>
+        </button>
+
+      </form>
+
+      <!-- Compliance & Security Badge -->
+      <div class="welcome-footer">
+        <span class="security-badge">
+          🔒 Governed by Commercial Oncology Compliance Policies & Real-Time KG Guardrails
+        </span>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- =========================================================================
+       2. MAIN CALL NOTE WORKSPACE (Executive, Clean, Uncluttered Layout)
+       ========================================================================= -->
+  <div id="workspace-screen" class="workspace-screen" style="display: none;">
+    
+    <!-- TOP CORPORATE NAVBAR -->
+    <header class="navbar">
+      
+      <!-- Brand & Product Title -->
+      <div class="nav-left">
+        <div class="brand-block">
+          <div class="anq-logo">AnQ<span>Bot</span></div>
+          <div class="brand-division">COMMERCIAL INTELLIGENCE</div>
+        </div>
+        <div class="nav-divider"></div>
+        <div class="app-title">
+          <h1>Call Note Assistant</h1>
+          <span class="app-tag" id="nav-persona-tag">OS Commercial</span>
+        </div>
+      </div>
+
+      <!-- Quick Session Controls -->
+      <div class="nav-center">
+        <!-- Persona Pill Switcher -->
+        <div class="persona-switch-bar">
+          <button class="switch-btn active" data-role="OS" id="btn-role-os" type="button">
+            OS (Sales)
+          </button>
+          <button class="switch-btn" data-role="FRM" id="btn-role-frm" type="button">
+            FRM (Access)
+          </button>
+        </div>
+
+        <!-- Brand Selector -->
+        <div class="nav-select-wrap">
+          <label for="brand-select">Brand:</label>
+          <select id="brand-select" class="nav-select">
+            <option value="INLEXZO" selected>INLEXZO®</option>
+            <option value="RYBREVANT">RYBREVANT®</option>
+            <option value="RYBREVANT + LAZCLUZE">RYBREVANT® + LAZCLUZE®</option>
+          </select>
+        </div>
+
+
+      </div>
+
+      <!-- User Profile Badge & Actions -->
+      <div class="nav-right">
+        <!-- Logged-in User Profile Badge -->
+        <div class="user-profile-badge" id="user-profile-badge" title="Active Field Representative">
+          <div class="user-avatar" id="user-avatar">--</div>
+          <div class="user-meta">
+            <span class="user-name" id="nav-user-name">Loading...</span>
+            <span class="user-role-tag" id="nav-user-role">Representative</span>
+          </div>
+          <button class="btn-switch-user" id="btn-switch-user" type="button" title="Switch Representative Profile">
+            Switch
+          </button>
+        </div>
+
+        <button id="btn-new-session" class="btn-new-note" type="button" title="Start fresh call note">
+          <span>+ New Note</span>
+        </button>
+      </div>
+
+    </header>
+
+
+    <!-- COMPACT SUB-HEADER STATUS BAR -->
+    <div class="sub-header-bar">
+      <div class="sub-header-left">
+        <span class="live-dot"></span>
+        <span class="sub-header-status">
+          Knowledge Graph Active &bull; <strong id="active-role-text">OS Commercial Scope</strong>
+        </span>
+      </div>
+      
+      <!-- Collapsible Quick Test Prompts (Discreet & Non-Intrusive) -->
+      <div class="sub-header-right">
+        <button class="btn-demo-toggle" id="btn-demo-toggle" type="button">
+          <span>⚡ Demo Scenarios</span>
+          <span class="caret">▼</span>
+        </button>
+        <div class="demo-dropdown" id="demo-dropdown" style="display: none;">
+          <div class="demo-dropdown-header">Evaluation Scenarios:</div>
+          <button class="demo-item" id="scen-masters-frm" type="button">
+            <strong>1A: FRM Clinical Efficacy</strong> &bull; Triggers Scope Violation Intercept
+          </button>
+          <button class="demo-item" id="scen-phd-os" type="button">
+            <strong>1B: OS Clinical Efficacy</strong> &bull; Approved Commercial Dialogue
+          </button>
+          <button class="demo-item" id="scen-prior-auth" type="button">
+            <strong>2: Prior Auth & Reimbursement</strong> &bull; FRM Standard Pathway
+          </button>
+          <button class="demo-item" id="scen-phi-violation" type="button">
+            <strong>3: PHI Redaction Check</strong> &bull; Compliance Privacy Protection
+          </button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- MAIN WORKSPACE CONTENT: 2 BALANCED COLUMNS -->
+    <main class="main-workspace-content">
+      
+      <!-- LEFT COLUMN: CONVERSATION FEED & INPUT -->
+      <section class="conversation-column">
+        
+        <!-- Live Chat Message Stream -->
+        <div class="chat-stream-container" id="chat-stream">
+          <!-- Chat messages rendered dynamically -->
+        </div>
+
+        <!-- Chat Input Panel -->
+        <div class="chat-input-panel">
+          <div class="input-box-container">
+            <textarea 
+              id="user-input-box" 
+              placeholder="Type rep response (e.g., 'I met Dr. Anurag at Apollo Hospital to discuss eligible NMIBC cases...')"
+              rows="1"
+            ></textarea>
+            <button class="btn-send-message" id="btn-send" type="button">
+              Send
+            </button>
+          </div>
+          <div class="input-keyboard-hint">
+            Press <strong>Enter</strong> to send &bull; Neo4j Knowledge Graph Grounded &bull; Anti-Repetition Enforced
+          </div>
+        </div>
+
+      </section>
+
+
+      <!-- RIGHT COLUMN: KNOWLEDGE GRAPH & CONTEXT INTELLIGENCE SIDEBAR -->
+      <aside class="intelligence-sidebar">
+        
+        <!-- Sidebar Navigation Tabs -->
+        <div class="sidebar-tab-nav">
+          <button class="sidebar-tab-btn active" id="side-tab-graph" type="button">
+            <span>🕸️ KG Flow</span>
+          </button>
+          <button class="sidebar-tab-btn" id="side-tab-blocker" type="button">
+            <span>🏥 Account Friction</span>
+          </button>
+          <button class="sidebar-tab-btn" id="side-tab-summary" type="button">
+            <span>📋 Note Summary</span>
+          </button>
+          <button class="sidebar-tab-btn" id="side-tab-scope" type="button">
+            <span>🛡️ Scope Rules</span>
+          </button>
+        </div>
+
+        <div class="sidebar-tab-content">
+          
+          <!-- TAB 1: DYNAMIC KNOWLEDGE GRAPH TRAVERSAL -->
+          <div class="tab-pane active" id="pane-graph">
+            
+            <!-- Traversal Status Header -->
+            <div class="traversal-status-card">
+              <div class="status-metric-group">
+                <span class="metric-eyebrow">Active Focus Node:</span>
+                <span class="metric-title" id="kg-active-node-badge">Account & Stakeholder</span>
+              </div>
+              <span class="traversal-progress-chip" id="kg-traversal-count">Turn 0 &bull; Step 1 of 7</span>
+            </div>
+
+            <!-- Interactive Step Progress Chain -->
+            <div class="kg-chain-wrapper">
+              <div class="chain-header">Discovered Entities & Commercial Relations</div>
+              <div id="kg-node-chain" class="kg-node-chain">
+                <!-- Dynamically populated per turn -->
+              </div>
+            </div>
+
+            <!-- Mermaid Neo4j Visualizer Container -->
+            <div class="mermaid-section">
+              <div class="mermaid-section-header">
+                <span>Live Entity-Relationship Knowledge Network</span>
+                <button class="btn-mermaid-refresh" id="btn-mermaid-refresh" type="button" title="Refresh Diagram">↻</button>
+              </div>
+              <div id="kg-mermaid-container" class="mermaid-canvas"></div>
+            </div>
+
+            <!-- Active Core Duty Statement -->
+            <div class="active-duty-card">
+              <div class="duty-card-header">
+                <span class="duty-label">Active Knowledge Graph Duty</span>
+                <span class="duty-pill">Anti-Repetition Active</span>
+              </div>
+              <p class="duty-text" id="active-duty-text">
+                Building and maintaining professional relationships with oncologists, hematologists, and clinic staff to support appropriate patient care pathways.
+              </p>
+            </div>
+
+          </div>
+
+
+          <!-- TAB 2: HISTORICAL ACCOUNT FRICTION & CONTEXT BLOCKERS -->
+          <div class="tab-pane" id="pane-blocker" style="display: none;">
+            <div class="blocker-header-box">
+              <div class="blocker-title-row">
+                <h3>Account Friction & Context Blockers</h3>
+                <span class="account-name-pill" id="active-account-badge">Select Account</span>
+              </div>
+              <div class="blocker-summary-banner">
+                <span class="banner-icon">💡</span>
+                <span class="banner-text">
+                  Manager Field Intelligence: Identified operational & reimbursement bottlenecks used by AnQ Bot to eliminate circular questions and probe root causes.
+                </span>
+              </div>
+            </div>
+
+            <div class="blocker-content-body" id="account-intel-content">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+
+          <!-- TAB 3: CAPTURED NOTE SUMMARY -->
+          <div class="tab-pane" id="pane-summary" style="display: none;">
+            <div class="summary-header-box">
+              <h3>Captured Call Note Record</h3>
+              <span class="fsm-badge" id="fsm-status-badge">Step 0: Greeting</span>
+            </div>
+
+            <div class="summary-key-values">
+              <div class="kv-row">
+                <span class="kv-key">Field Representative</span>
+                <span class="kv-val" id="slot-rep-name">—</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Commercial Brand</span>
+                <span class="kv-val" id="slot-brand">—</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Healthcare Professional (HCP)</span>
+                <span class="kv-val" id="slot-hcp">—</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Target Account / Site</span>
+                <span class="kv-val" id="slot-account">—</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Key Clinic Stakeholders</span>
+                <span class="kv-val" id="slot-stakeholders">—</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Active Graph Node</span>
+                <span class="kv-val" id="slot-active-node">Account & Stakeholder</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Target Timing / Horizon</span>
+                <span class="kv-val" id="slot-timing">—</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Blocker / Pathway Status</span>
+                <span class="kv-val status-accent" id="slot-barrier-status">—</span>
+              </div>
+            </div>
+          </div>
+
+
+          <!-- TAB 4: SCOPE RULES & REGULATORY BOUNDARIES -->
+          <div class="tab-pane" id="pane-scope" style="display: none;">
+            <div class="scope-header-box">
+              <h3>Role Policy Governance</h3>
+              <span class="scope-role-badge" id="sidebar-role-name">OS</span>
+            </div>
+
+            <div class="scope-group">
+              <div class="scope-title-ok">✓ Permitted Commercial Topics:</div>
+              <div class="tag-wrap" id="in-scope-tags">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+
+            <div class="scope-group" style="margin-top: 14px;">
+              <div class="scope-title-no">✕ Strictly Excluded Compliance Boundaries:</div>
+              <div class="tag-wrap" id="out-of-scope-tags">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </aside>
+
+    </main>
+
+  </div>
+
+  <!-- Application Logic Script -->
+  <script src="app.js"></script>
+</body>
+</html>

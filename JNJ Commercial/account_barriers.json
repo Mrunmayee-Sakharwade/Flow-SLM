@@ -1,0 +1,52 @@
+[
+  {
+    "account": "Apollo Hospitals",
+    "barrier_type": "Patient Identification Barrier",
+    "barrier_details": "They are seeing very few eligible patients right now, so the team is not confident they can operationalize the pathway consistently. They asked for a simple way to recognize and flag potential candidates as they appear."
+  },
+  {
+    "account": "Apollo Hospitals",
+    "barrier_type": "Market Access Barrier",
+    "barrier_details": "PA turnaround times are inconsistent, which makes it hard for the team to plan next steps. They asked to use approved access-support resources to understand the process and reduce rework."
+  },
+  {
+    "account": "Fortis Healthcare",
+    "barrier_type": "Patient Identification Barrier",
+    "barrier_details": "Biomarker testing and/or results are sometimes delayed, which slows down patient identification in their pathway. The team asked to align internally on where testing fits in their workflow and who owns tracking results."
+  },
+  {
+    "account": "Fortis Healthcare",
+    "barrier_type": "Market Access Barrier",
+    "barrier_details": "Patient cost exposure is a concern and the team wants clearer expectations before moving forward. They asked about benefits verification and approved resources that can help set expectations appropriately."
+  },
+  {
+    "account": "Manipal Hospitals",
+    "barrier_type": "Patient Identification Barrier",
+    "barrier_details": "Key steps in their diagnosis-to-treatment pathway are taking longer than expected due to scheduling and coordination, which delays next-step decisions. The team wants clearer handoffs so potential candidates are identified and routed sooner."
+  },
+  {
+    "account": "Manipal Hospitals",
+    "barrier_type": "Market Access Barrier",
+    "barrier_details": "Prior authorization timelines are creating scheduling uncertainty. The account asked what information their payer typically requests and wanted support using the appropriate, approved access pathway to reduce back-and-forth."
+  },
+  {
+    "account": "Max Healthcare",
+    "barrier_type": "Patient Identification Barrier",
+    "barrier_details": "There are delays in the diagnostic workup and internal handoffs, so potential candidates are identified late in the process. The team wants a cleaner pathway with fewer missed handoffs between roles."
+  },
+  {
+    "account": "Max Healthcare",
+    "barrier_type": "Market Access Barrier",
+    "barrier_details": "The product is not on the current formulary (or is restricted), so usage requires an exception pathway. The account needs clarity on committee timing, required documentation, and who will submit the request."
+  },
+  {
+    "account": "Narayana Health",
+    "barrier_type": "Patient Identification Barrier",
+    "barrier_details": "The site is not consistently identifying potential candidates in their current workflow. They want a simple way to flag appropriate patients earlier without adding extra burden to clinic staff."
+  },
+  {
+    "account": "Narayana Health",
+    "barrier_type": "Market Access Barrier",
+    "barrier_details": "Recent changes in payer coverage policy created uncertainty about requirements and next steps. The account requested the latest available, published policy information and clarity on how to route questions through the approved access support channel."
+  }
+]

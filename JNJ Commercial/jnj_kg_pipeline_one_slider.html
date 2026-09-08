@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>J&J Commercial Oncology - Knowledge Graph Conditioned SLM Pipeline (1-Slider)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #070d18;
+      --card-bg: rgba(16, 26, 46, 0.85);
+      --card-border: rgba(45, 66, 105, 0.7);
+      --card-hover-border: rgba(14, 165, 233, 0.5);
+      --jnj-red: #E11D48;
+      --tech-cyan: #0EA5E9;
+      --tech-emerald: #10B981;
+      --tech-amber: #F59E0B;
+      --tech-purple: #A855F7;
+      --text-main: #FFFFFF;
+      --text-sub: #E2E8F0;
+      --text-muted: #94A3B8;
+      --font-main: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: var(--font-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(225, 29, 72, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(14, 165, 233, 0.08) 0%, transparent 40%);
+    }
+
+    /* 16:9 Presentation Frame */
+    .slide-wrapper {
+      width: 100%;
+      max-width: 1440px;
+      aspect-ratio: 16 / 9;
+      background: radial-gradient(120% 100% at 50% 0%, #0d172a 0%, #070d18 100%);
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      border-radius: 16px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 40px rgba(14, 165, 233, 0.1);
+      padding: 32px 40px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Header Bar */
+    .slide-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 16px;
+    }
+
+    .header-left {
+      max-width: 70%;
+    }
+
+    .brand-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--jnj-red);
+      background: rgba(225, 29, 72, 0.12);
+      border: 1px solid rgba(225, 29, 72, 0.3);
+      padding: 4px 12px;
+      border-radius: 999px;
+      margin-bottom: 8px;
+    }
+
+    .brand-tag span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--jnj-red);
+      box-shadow: 0 0 8px var(--jnj-red);
+    }
+
+    .slide-title {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      background: linear-gradient(135deg, #FFFFFF 30%, #CBD5E1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+    }
+
+    .slide-subtitle {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      font-weight: 500;
+      line-height: 1.4;
+    }
+
+    .header-kpi-badge {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(14, 165, 233, 0.3);
+      padding: 10px 16px;
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+    }
+
+    .kpi-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .kpi-stat {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--tech-cyan);
+    }
+
+    .kpi-stat.highlight {
+      color: var(--tech-emerald);
+    }
+
+    .kpi-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* 5-Stage Pipeline Container */
+    .pipeline-container {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 14px;
+      position: relative;
+      margin-bottom: 20px;
+    }
+
+    .stage-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 16px 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      backdrop-filter: blur(12px);
+      transition: all 0.25s ease;
+    }
+
+    .stage-card:hover {
+      border-color: var(--card-hover-border);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+
+    .stage-top {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+
+    .stage-badge {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+
+    .stage-1 .stage-badge { color: var(--tech-cyan); }
+    .stage-2 .stage-badge { color: var(--jnj-red); }
+    .stage-3 .stage-badge { color: var(--tech-amber); }
+    .stage-4 .stage-badge { color: var(--tech-emerald); }
+    .stage-5 .stage-badge { color: var(--tech-purple); }
+
+    .stage-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .stage-1 .stage-indicator { background: var(--tech-cyan); box-shadow: 0 0 6px var(--tech-cyan); }
+    .stage-2 .stage-indicator { background: var(--jnj-red); box-shadow: 0 0 6px var(--jnj-red); }
+    .stage-3 .stage-indicator { background: var(--tech-amber); box-shadow: 0 0 6px var(--tech-amber); }
+    .stage-4 .stage-indicator { background: var(--tech-emerald); box-shadow: 0 0 6px var(--tech-emerald); }
+    .stage-5 .stage-indicator { background: var(--tech-purple); box-shadow: 0 0 6px var(--tech-purple); }
+
+    .stage-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #FFFFFF;
+      line-height: 1.3;
+    }
+
+    .stage-items {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .item-block {
+      background: rgba(255, 255, 255, 0.03);
+      border-left: 2px solid transparent;
+      padding: 6px 8px;
+      border-radius: 4px;
+    }
+
+    .stage-1 .item-block { border-left-color: var(--tech-cyan); }
+    .stage-2 .item-block { border-left-color: var(--jnj-red); }
+    .stage-3 .item-block { border-left-color: var(--tech-amber); }
+    .stage-4 .item-block { border-left-color: var(--tech-emerald); }
+    .stage-5 .item-block { border-left-color: var(--tech-purple); }
+
+    .item-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: #E2E8F0;
+      margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .item-desc {
+      font-size: 9.5px;
+      color: var(--text-muted);
+      line-height: 1.35;
+    }
+
+    .stage-footer {
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 9.5px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .stage-1 .stage-footer { color: var(--tech-cyan); }
+    .stage-2 .stage-footer { color: var(--jnj-red); }
+    .stage-3 .stage-footer { color: var(--tech-amber); }
+    .stage-4 .stage-footer { color: var(--tech-emerald); }
+    .stage-5 .stage-footer { color: var(--tech-purple); }
+
+    /* Bottom Deep-Dive / Comparison Strip */
+    .slide-footer-strip {
+      display: grid;
+      grid-template-columns: 1.1fr 1.2fr 1.1fr;
+      gap: 16px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(51, 65, 85, 0.9);
+      border-radius: 12px;
+      padding: 14px 20px;
+    }
+
+    .footer-col {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .col-header {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .col-header.danger { color: #EF4444; }
+    .col-header.solution { color: var(--tech-cyan); }
+    .col-header.value { color: var(--tech-emerald); }
+
+    .col-bullets {
+      font-size: 10px;
+      color: #CBD5E1;
+      line-height: 1.45;
+      list-style-type: none;
+    }
+
+    .col-bullets li {
+      position: relative;
+      padding-left: 12px;
+      margin-bottom: 3px;
+    }
+
+    .col-bullets li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      font-weight: bold;
+    }
+
+    .danger .col-bullets li::before { color: #EF4444; }
+    .solution .col-bullets li::before { color: var(--tech-cyan); }
+    .value .col-bullets li::before { color: var(--tech-emerald); }
+
+    /* Action Toolbar for Presentation Mode & Download */
+    .toolbar {
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #1E293B, #0F172A);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #FFFFFF;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .btn:hover {
+      background: rgba(14, 165, 233, 0.2);
+      border-color: var(--tech-cyan);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--jnj-red), #be123c);
+      border: none;
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #f43f5e, #e11d48);
+      box-shadow: 0 0 15px rgba(225, 29, 72, 0.4);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="slide-wrapper" id="slide">
+    
+    <!-- Header -->
+    <header class="slide-header">
+      <div class="header-left">
+        <div class="brand-tag">
+          <span></span> JOHNSON &amp; JOHNSON INNOVATIVE MEDICINE • COMMERCIAL ONCOLOGY AI
+        </div>
+        <h1 class="slide-title">Knowledge-Graph Conditioned Next-Question Intelligence Pipeline</h1>
+        <p class="slide-subtitle">How Neo4j Graph Ontology &amp; Live Subgraphs Eliminate Hallucinations and Dynamically Ground the SLM in Call Context</p>
+      </div>
+      <div class="header-kpi-badge">
+        <div class="kpi-row">
+          <span class="kpi-stat">117 Nodes</span>
+          <span class="kpi-stat">352 Edges</span>
+          <span class="kpi-stat highlight">8 Personas</span>
+        </div>
+        <div class="kpi-row">
+          <span class="kpi-desc">100% Policy Match  •  &lt;300ms SLM Latency  •  Zero Redundant Inquiries</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- 5-Stage Core Pipeline -->
+    <main class="pipeline-container">
+
+      <!-- STAGE 1 -->
+      <div class="stage-card stage-1">
+        <div class="stage-top">
+          <div class="stage-badge">
+            <span>Stage 1</span>
+            <div class="stage-indicator"></div>
+          </div>
+          <div class="stage-title">Rep Input &amp; NLU Normalization</div>
+        </div>
+        <div class="stage-items">
+          <div class="item-block">
+            <div class="item-label">🎙️ Multi-Modal Input</div>
+            <div class="item-desc">Voice transcription or text notes from field rep (OS: Oncology Sales, FRM: Field Reimbursement).</div>
+          </div>
+          <div class="item-block">
+            <div class="item-label">🏷️ Entity Normalization</div>
+            <div class="item-desc">Resolves Doctor (<code>Dr. Anurag</code>), Brand (<code>INLEXZO</code>), Account (<code>Apollo Hospitals</code>).</div>
+          </div>
+          <div class="item-block">
+            <div class="item-label">🔄 Dialogue State Tracker</div>
+            <div class="item-desc">Maintains multi-turn context, accumulated slots, and turn progression (DST).</div>
+          </div>
+        </div>
+        <div class="stage-footer">
+          ⚡ Input: "Met Dr Anurag at Apollo..."
+        </div>
+      </div>
+
+      <!-- STAGE 2 -->
+      <div class="stage-card stage-2">
+        <div class="stage-top">
+          <div class="stage-badge">
+            <span>Stage 2</span>
+            <div class="stage-indicator"></div>
+          </div>
+          <div class="stage-title">Deterministic Regulatory Gatekeeper</div>
+        </div>
+        <div class="stage-items">
+          <div class="item-block">
+            <div class="item-label">🛡️ PHI / PII Redaction</div>
+            <div class="item-desc">100% privacy firewall strips patient-identifying data before model exposure.</div>
+          </div>
+          <div class="item-block">
+            <div class="item-label">⚠️ Toxicity Language Control</div>
+            <div class="item-desc">Auto-normalizes "toxicity" to "safety concerns" per global J&amp;J compliance.</div>
+          </div>
+          <div class="item-block">
+            <div class="item-label">⛔ Hard Role Boundary</div>
+            <div class="item-desc">Graph check: FRM blocked from clinical trials; OS blocked from pricing negotiations.</div>
+          </div>
+        </div>
+        <div class="stage-footer">
+          🔒 100% Compliance Guardrail
+        </div>
+      </div>
+
+      <!-- STAGE 3 -->
+      <div class="stage-card stage-3">
+        <div class="stage-top">
+          <div class="stage-badge">
+            <span>Stage 3</span>
+            <div class="stage-indicator"></div>
+          </div>
+          <div class="stage-title">Knowledge Graph Dynamic Context</div>
+        </div>
+        <div class="stage-items">
+          <div class="item-block">
+            <div class="item-label">🧭 Dynamic Topic Traversal</div>
+            <div class="item-desc">Compares Covered Topics vs Role Roadmap &rarr; targets next unaddressed clinical duty.</div>
+          </div>
+          <div class="item-block">
+            <div class="item-label">🚫 Anti-Repetition Guard</div>
+            <div class="item-desc">Guarantees AI never repeats questions already answered in cumulative history.</div>
+          </div>
+          <div class="item-block">
+            <div class="item-label">🏥 Account Barrier Intelligence</div>
+            <div class="item-desc">Dual-case logic: Rep Ask (Case 1) vs Proactive Institutional Probe (Case 2).</div>
+          </div>
+        </div>
+        <div class="stage-footer">
+          💡 Resolves Unaddressed Topics
+        </div>
+      </div>
+
+      <!-- STAGE 4 -->
+      <div class="stage-card stage-4">
+        <div class="stage-top">
+          <div class="stage-badge">
+            <span>Stage 4</span>
+            <div class="stage-indicator"></div>
+          </div>
+          <div class="stage-title">Live Entity-Rel Subgraph</div>
+        </div>
+        <div class="stage-items">
+          <div class="item-block">
+            <div class="item-label">🌐 Turn Subgraph Synthesis</div>
+            <div class="item-desc">Materializes active ER graph: Rep &rarr; Account &rarr; HCP &rarr; Brand &rarr; Barrier &rarr; Next Step.</div>
+          </div>
+          <div class="item-block">
+            <div class="item-label">🔗 Semantic Relation Links</div>
+            <div class="item-desc">Links clinical status, access pathways, and active commercial responsibilities.</div>
+          </div>
+          <div class="item-block">
+            <div class="item-label">📊 Audit &amp; Visual Trace</div>
+            <div class="item-desc">Generates live Mermaid ER syntax for instant inspection &amp; regulatory audit trails.</div>
+          </div>
+        </div>
+        <div class="stage-footer">
+          👁️ Explainable Knowledge Graph
+        </div>
+      </div>
+
+      <!-- STAGE 5 -->
+      <div class="stage-card stage-5">
+        <div class="stage-top">
+          <div class="stage-badge">
+            <span>Stage 5</span>
+            <div class="stage-indicator"></div>
+          </div>
+          <div class="stage-title">Flat Prompt &amp; SLM Generation</div>
+        </div>
+        <div class="stage-items">
+          <div class="item-block">
+            <div class="item-label">📋 Flat Prompt Serialization</div>
+            <div class="item-desc">Packages Role, Brand, Contact, Barrier, Target Topic &amp; History into flat prompt.</div>
+          </div>
+          <div class="item-block">
+            <div class="item-label">⚡ Merged Llama-3.2-1B</div>
+            <div class="item-desc">High-throughput vLLM engine with PagedAttention and FP16 weights.</div>
+          </div>
+          <div class="item-block">
+            <div class="item-label">🎯 Targeted Next Question</div>
+            <div class="item-desc">Emits single, clinically grounded, non-hallucinatory inquiry in sub-300ms.</div>
+          </div>
+        </div>
+        <div class="stage-footer">
+          ✨ Next: "What was the main discussion?"
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Bottom Deep-Dive Banner -->
+    <footer class="slide-footer-strip">
+      <div class="footer-col danger">
+        <div class="col-header danger">⚠️ The Problem: Pure LLMs &amp; Naive RAG</div>
+        <ul class="col-bullets">
+          <li>Confuses field personas (OS asks pricing; FRM discusses clinical trials).</li>
+          <li>Repeats questions for information already provided in Turn 1.</li>
+          <li>Blind to historical institutional friction at target hospital systems.</li>
+        </ul>
+      </div>
+
+      <div class="footer-col solution">
+        <div class="col-header solution">🧠 The Solution: Dynamic Knowledge Graph</div>
+        <ul class="col-bullets">
+          <li><strong>Deterministic Neo4j Ontology:</strong> 44 duties, 13 exclusions, compliance rules.</li>
+          <li><strong>Dynamic Topic Traversal:</strong> Selects next unaddressed clinical duty sequentially.</li>
+          <li><strong>Account Intelligence:</strong> Proactively injects account-specific friction inquiries.</li>
+        </ul>
+      </div>
+
+      <div class="footer-col value">
+        <div class="col-header value">🚀 Enterprise Business &amp; Audit Value</div>
+        <ul class="col-bullets">
+          <li><strong>100% Policy Verbatim Fidelity:</strong> Zero regulatory or off-label infractions.</li>
+          <li><strong>Sub-300ms Latency (TTFT):</strong> Instant voice-interview speed for field reps.</li>
+          <li><strong>Live Audit Subgraph:</strong> Dynamic Mermaid ER graph generated for every turn.</li>
+        </ul>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Action Toolbar -->
+  <div class="toolbar">
+    <a href="JNJ_Commercial_KG_Pipeline_One_Slider.pptx" download class="btn btn-primary">
+      📥 Download 1-Slider PowerPoint (.pptx)
+    </a>
+    <button onclick="window.print()" class="btn">
+      🖨️ Print / Save as PDF
+    </button>
+  </div>
+
+</body>
+</html>

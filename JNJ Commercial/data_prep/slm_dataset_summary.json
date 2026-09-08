@@ -1,0 +1,53 @@
+{
+  "total_slm_samples": 23811,
+  "total_dialogues": 2000,
+  "splits": {
+    "train_dialogues": 1600,
+    "train_turns": 19498,
+    "val_dialogues": 200,
+    "val_turns": 2156,
+    "test_dialogues": 200,
+    "test_turns": 2157
+  },
+  "role_distribution": {
+    "FRM": 11891,
+    "OS": 11920
+  },
+  "state_distribution": {
+    "STATE_3_CLINICAL_PROMOTIONAL_DETAILS": 6662,
+    "STATE_3_REIMBURSEMENT_DETAILS": 3669,
+    "STATE_3A_PRIOR_AUTH_PAYER": 2677,
+    "STATE_7_WRAP_UP_CONFIRMATION": 2002,
+    "STATE_0_GREETING_INITIATION": 2000,
+    "STATE_4_BARRIERS_LOGISTICS": 1449,
+    "STATE_1_ACCOUNT_STAKEHOLDER": 1104,
+    "STATE_3C_HUB_SPECIALTY_PHARMACY": 1000,
+    "STATE_6_NEXT_ACTIONS": 862,
+    "STATE_3B_AFFORDABILITY_COPAY_PAP": 734,
+    "STATE_2_PRIMARY_PURPOSE": 618,
+    "STATE_5_CROSS_FUNCTIONAL_HANDOFF": 461,
+    "STATE_3E_WORKFLOW_DEMO_REFRESHER": 429,
+    "STATE_3F_EFFICACY_TREATMENT_POSITIONING": 128,
+    "STATE_3G_PATIENT_IDENTIFICATION": 16
+  },
+  "target_topics_distribution": {
+    "cross functional collaboration": 6698,
+    "patient access": 3978,
+    "treatment sequencing": 3041,
+    "efficacy safety product info": 2524,
+    "clinical operational workflow": 2268,
+    "account identification": 1904,
+    "territory engagement planning": 1083,
+    "dosing administration": 964,
+    "payer coverage": 645,
+    "reimbursement": 618,
+    "affordability patient support": 67,
+    "prior authorization": 21
+  },
+  "file_paths": {
+    "train": "data_prep/slm_train.jsonl",
+    "val": "data_prep/slm_val.jsonl",
+    "test": "data_prep/slm_test.jsonl",
+    "alpaca": "data_prep/slm_alpaca_dataset.json"
+  }
+}
